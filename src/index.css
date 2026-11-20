@@ -1,0 +1,11 @@
+@import "tailwindcss";
+
+@media print {
+  .no-print { display: none !important; }
+  body { background: white; }
+  .print-break { page-break-after: always; }
+}
+
+table.grid-table { border-collapse: collapse; width: 100%; }
+table.grid-table th, table.grid-table td { border: 1px solid #d4d4d8; padding: 4px 6px; font-size: 12px; text-align: center; }
+table.grid-table th { background: #f4f4f5; font-weight: 600; }
