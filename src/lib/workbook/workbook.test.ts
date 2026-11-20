@@ -43,7 +43,7 @@ describe('school data workbook', () => {
     expect(parsed.subjectsByStandard?.['6']).toEqual(defaultRuleSet('MATRIC').subjectsByStandard['6'])
     expect(parsed.hssGroups?.map((g) => g.id)).toEqual(defaultRuleSet('MATRIC').hssGroups.map((g) => g.id))
     expect(parsed.hssGroups?.[0].subjects).toEqual(defaultRuleSet('MATRIC').hssGroups[0].subjects)
-    expect(parsed.compliance['tn-building']).toMatchObject({ status: 'YES', validUntil: '2027-03-31' })
+    expect(parsed.sheetsFound).not.toContain('Compliance')
     expect(parsed.profile).toMatchObject({ recognitionValidUntil: '2027-05-31', workingDaysYear: 220, periodMinutes: 40 })
     expect(parsed.periodsPerDay).toBe(8)
   })

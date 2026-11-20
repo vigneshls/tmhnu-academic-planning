@@ -15,7 +15,7 @@ function Shell({ children }: { children: React.ReactNode }) {
           <h2 className="text-3xl font-semibold leading-tight tracking-tight">Staffing, timetables and compliance — from one workbook per school.</h2>
           <ul className="mt-8 space-y-4 text-sm text-slate-300">
             {[
-              ['Upload', 'Each school fills one Excel workbook: profile, students, faculty, subject periods and compliance.'],
+              ['Upload', 'Each school fills one Excel workbook: profile, students, faculty and subject periods.'],
               ['Analyse', 'Sections, subject-wise teacher requirement and a clash-free timetable are calculated automatically.'],
               ['Act', 'Recommendations are ranked by severity and linked to the CBSE, RTE and Tamil Nadu rule behind each one.'],
             ].map(([t, d]) => (

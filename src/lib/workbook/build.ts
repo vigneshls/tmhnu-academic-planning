@@ -5,7 +5,7 @@ import type { RuleSet, School, SchoolData, Staff } from '../../engine/types'
 import { STANDARDS } from '../../engine/types'
 import { LABEL, TEMPLATE_HEADERS } from '../facultyExcel'
 import {
-  BOARD_OPTIONS, COMPLIANCE_HEADERS, COMPLIANCE_STATUS, HANDLED_BY, PREF_TIME, PROFILE_FIELDS, SHEETS,
+  BOARD_OPTIONS, COMPLIANCE_STATUS, HANDLED_BY, PREF_TIME, PROFILE_FIELDS, SHEETS,
   STUDENT_HEADERS, SUBJECT_HEADERS, YES_NO, classLabel,
 } from './spec'
 
@@ -13,7 +13,6 @@ type ExcelJS = typeof ExcelJSNS
 
 const NAVY = 'FF1F3A5F'
 const INPUT = 'FFFFFBEA'
-const LOCKED = 'FFF1F5F9'
 
 const HIGHEST = ['Higher Secondary', 'Diploma', 'UG Degree', 'PG Degree', 'M.Phil', 'Ph.D']
 const PROF = ['D.El.Ed / D.T.Ed', 'B.El.Ed', 'B.Ed', 'M.Ed', 'NTT / Montessori', 'B.P.Ed / M.P.Ed', 'B.Ed (Special Education) / RCI', 'None']
@@ -29,7 +28,8 @@ export interface BuildOptions {
   school: School
   rules: RuleSet
   data?: SchoolData
-  checklist: ChecklistItem[]
+  /** Kept for API compatibility; the workbook no longer carries a compliance sheet */
+  checklist?: ChecklistItem[]
   /** include current values (export) or leave student / faculty blank (fresh template) */
   prefill: boolean
 }
@@ -53,7 +53,6 @@ export async function buildWorkbook(Excel: ExcelJS, o: BuildOptions): Promise<Ar
     ['2. Students', 'Boys, girls and children with special needs (CWSN) for every class. For Class 11–12 enter one row per group.'],
     ['3. Faculty', 'One row per staff member, including Principal, counsellor, special educator and librarian.'],
     ['4. Subject Periods', 'Periods per week for each subject. Pre-filled with the board model — change it to the school’s actual timetable. Class 11 rows apply to Class 11 and 12.'],
-    ['5. Compliance', 'Mark each requirement Yes / No / Not applicable and add expiry dates for certificates.'],
     ['', ''],
     ['After filling', 'Send the file to management. On upload, the system checks every row, then calculates sections, teacher requirement, timetable and recommendations.'],
     ['Privacy', 'Do not enter phone numbers, Aadhaar, bank, salary or student names. They are not needed.'],
@@ -192,22 +191,6 @@ export async function buildWorkbook(Excel: ExcelJS, o: BuildOptions): Promise<Ar
     pw.getCell(`D${r}`).dataValidation = { type: 'whole', operator: 'between', formulae: [0, 20], allowBlank: true, showErrorMessage: true, error: '0 to 20 periods.' }
     pw.getCell(`D${r}`).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: INPUT } }
   }
-
-  // ---- Compliance
-  const cw = wb.addWorksheet(SHEETS.compliance)
-  headerRow(cw, COMPLIANCE_HEADERS, [14, 18, 70, 16, 18, 30, 50])
-  for (const it of o.checklist) {
-    const e = d?.compliance?.[it.id] ?? o.data?.compliance?.[it.id]
-    const status = e?.status === 'YES' ? 'Yes' : e?.status === 'NO' ? 'No' : e?.status === 'NA' ? 'Not applicable' : e?.done ? 'Yes' : ''
-    const r = cw.addRow([it.id, it.area, it.title, status, date(e?.validUntil), e?.note ?? '', `${it.source.title}${it.source.ref ? ' — ' + it.source.ref : ''}`])
-    r.getCell(3).alignment = { wrapText: true, vertical: 'top' }
-    r.getCell(7).alignment = { wrapText: true, vertical: 'top' }
-    r.getCell(7).font = { color: { argb: 'FF64748B' }, size: 9 }
-    r.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: LOCKED } }
-    ;[4, 5, 6].forEach((ci) => (r.getCell(ci).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: INPUT } }))
-    r.getCell(5).numFmt = 'dd-mm-yyyy'
-  }
-  if (cw.rowCount > 1) listDV(cw, `D2:D${cw.rowCount}`, 'K')
 
   wb.views = [{ x: 0, y: 0, width: 20000, height: 12000, firstSheet: 0, activeTab: 0, visibility: 'visible' }]
   return (await wb.xlsx.writeBuffer()) as ArrayBuffer

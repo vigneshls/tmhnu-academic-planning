@@ -14,7 +14,7 @@ The app currently holds **NS Matriculation Higher Secondary School, Vadapudupatt
 ## Workflow
 
 1. **Admin → Data Import → "Blank workbook for this school"**. Send the downloaded file to the school.
-2. The school fills the five sheets. The drop-down lists and value checks are built into the file.
+2. The school fills the four sheets. The drop-down lists and value checks are built into the file.
 
    | Sheet | What it collects |
    |---|---|
@@ -22,7 +22,6 @@ The app currently holds **NS Matriculation Higher Secondary School, Vadapudupatt
    | Students | Boys, girls and CWSN (children with special needs) per class; Classes 11–12 per group |
    | Faculty | One row per staff member: designation, subjects, qualification, professional qualification, TET, appointment, joining date, experience, training (CPD) hours |
    | Subject Periods | Periods per week per subject. Pre-filled with the board model, to be edited to match the school |
-   | Compliance | Yes / No / Not applicable for each regulatory item, with expiry dates |
 
 3. **Upload** the filled file. Every sheet, row and column is validated, and the page shows a before/after comparison. Then click **Apply import**.
 4. The school dashboard updates immediately. Principals see their own school only.
@@ -56,8 +55,8 @@ See `src/engine/recommend.ts` and `src/engine/sources.ts`. Every check shows the
   - CBSE: three languages (R3) from Class 6.
   - RTE minimum working days and instructional hours.
 - **Compliance and records:**
-  - Recognition validity, with an alert 3 months ahead.
-  - Items marked "No", and certificates that have expired or expire within 60 days.
+  - Recognition validity (from the School Profile sheet), with an alert 3 months ahead.
+  - In the app's Compliance tab: items marked "No", and certificates that have expired or expire within 60 days.
 - **Professional development:** 50 hours of CPD per teacher; mentoring where a subject is taught only by teachers with less than 2 years' experience.
 - **Timetable and workload:** vacancies, unscheduled periods, the 5-period buffer, and conflicts between rules.
 

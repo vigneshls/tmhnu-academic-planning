@@ -34,7 +34,7 @@ function buildNext(cur: SchoolData, p: WorkbookData): SchoolData {
     genderSeparate: p.genderSeparate ?? cur.genderSeparate,
     profile: p.profile,
     overrides: { daysPerWeek: p.daysPerWeek, periodsPerDay: p.periodsPerDay, lunchAfterPeriod: p.lunchAfterPeriod, subjectsByStandard: p.subjectsByStandard, hssGroups: p.hssGroups },
-    compliance: { ...(cur.compliance ?? {}), ...p.compliance },
+    compliance: cur.compliance,
     timetable: undefined,
     source: 'import',
   }
@@ -104,7 +104,6 @@ export default function AdminImport() {
               <li><b className="text-slate-800">Students</b> — boys, girls, CWSN by class and group</li>
               <li><b className="text-slate-800">Faculty</b> — one row per staff member</li>
               <li><b className="text-slate-800">Subject Periods</b> — pre-filled board model, edit to actual</li>
-              <li><b className="text-slate-800">Compliance</b> — Yes / No / N.A. with expiry dates</li>
             </ol>
             <div className="flex flex-col gap-2">
               <Button variant="primary" disabled={!!busy} onClick={async () => { setBusy('Preparing workbook…'); try { await download(school, rules[school.board], current, false) } finally { setBusy('') } }}>{Icon.download} Blank workbook for this school</Button>
@@ -129,13 +128,12 @@ export default function AdminImport() {
                   <Badge tone={errors.length ? 'critical' : 'pass'}>{errors.length} error(s)</Badge>
                   <Badge tone={warnings.length ? 'high' : 'neutral'}>{warnings.length} warning(s)</Badge>
                 </div>
-                <div className="grid gap-2 sm:grid-cols-5">
+                <div className="grid gap-2 sm:grid-cols-4">
                   {[
                     [SHEETS.profile, parsed.schoolName ? 'Read' : 'Missing'],
                     [SHEETS.students, `${Object.values(parsed.strength).reduce((a, c) => a + c.boys + c.girls, 0) + Object.values(parsed.hss).flatMap((g) => Object.values(g)).reduce((a, c) => a + c.boys + c.girls, 0)} students`],
                     [SHEETS.faculty, `${parsed.staff?.length ?? 0} staff`],
                     [SHEETS.subjects, parsed.subjectsByStandard ? `${Object.keys(parsed.subjectsByStandard).length + (parsed.hssGroups?.length ?? 0)} classes / groups` : 'Board default'],
-                    [SHEETS.compliance, `${Object.keys(parsed.compliance).length} answered`],
                   ].map(([s, v]) => {
                     const n = parsed.issues.filter((i) => i.sheet === s && i.level === 'error').length
                     return (
