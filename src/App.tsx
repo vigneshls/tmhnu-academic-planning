@@ -11,6 +11,7 @@ interface AuthCtx {
   refresh: () => Promise<void>
 }
 const Ctx = createContext<AuthCtx>({ profile: null, refresh: async () => {} })
+// eslint-disable-next-line react-refresh/only-export-components
 export const useAuth = () => useContext(Ctx)
 
 export default function App() {
@@ -31,7 +32,9 @@ export default function App() {
   }, [])
   useEffect(() => { void refresh() }, [refresh])
 
-  if (loading) return <div className="p-8 text-zinc-500">Loading…</div>
+  if (loading) return <div className="p-8 text-slate-500">Loading…</div>
+
+  const nav = ({ isActive }: { isActive: boolean }) => `px-2 py-1 rounded ${isActive ? 'bg-slate-100 text-slate-900 font-medium' : 'text-slate-600 hover:text-slate-900'}`
 
   return (
     <Ctx.Provider value={{ profile, refresh }}>
@@ -39,26 +42,24 @@ export default function App() {
         {!profile ? (
           <Login error={error} />
         ) : (
-          <div className="min-h-screen bg-zinc-50">
-            <header className="no-print bg-indigo-900 text-white">
+          <div className="min-h-screen bg-slate-50 text-slate-800">
+            <header className="no-print border-b border-slate-200 bg-white">
               <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-4 px-4 py-3">
-                <Link to="/" className="font-semibold">
-                  TMHNU Staffing & Timetable
-                  <span className="ml-2 text-xs font-normal text-indigo-200">ஆசிரியர் பணியிடம் & பாடவேளை அட்டவணை</span>
+                <Link to="/" className="flex items-center gap-2">
+                  <span className="grid h-8 w-8 place-items-center rounded bg-[#1f3a5f] text-sm font-bold text-white">T</span>
+                  <span className="font-semibold text-slate-900">TMHNU Schools — Academic Planning</span>
                 </Link>
-                <nav className="flex gap-3 text-sm">
-                  <NavLink to="/" end className={({ isActive }) => (isActive ? 'underline' : 'opacity-80')}>Dashboard</NavLink>
-                  {profile.role === 'admin' && (
-                    <NavLink to="/rules" className={({ isActive }) => (isActive ? 'underline' : 'opacity-80')}>Board Rules</NavLink>
-                  )}
+                <nav className="flex gap-1 text-sm">
+                  <NavLink to="/" end className={nav}>{profile.role === 'admin' ? 'All Schools' : 'My School'}</NavLink>
+                  {profile.role === 'admin' && <NavLink to="/rules" className={nav}>Board Rules</NavLink>}
                 </nav>
                 <div className="ml-auto flex items-center gap-3 text-sm">
-                  {store.mode === 'demo' && <span className="rounded bg-amber-400 px-2 py-0.5 text-xs font-semibold text-black">DEMO — data stays in this browser</span>}
-                  <span>{profile.name}</span>
-                  {store.mode === 'demo' && (
-                    <button className="rounded border border-indigo-300 px-2 py-0.5 text-xs" onClick={() => { resetDemo(); location.reload() }}>Reset demo</button>
+                  {store.mode === 'demo' && <span className="rounded border border-amber-300 bg-amber-50 px-2 py-0.5 text-xs text-amber-800">Demo data — stored in this browser only</span>}
+                  <span className="text-slate-600">{profile.name}</span>
+                  {store.mode === 'demo' && profile.role === 'admin' && (
+                    <button className="rounded border border-slate-300 px-2 py-0.5 text-xs" onClick={() => { if (confirm('Reset all demo data?')) { resetDemo(); location.reload() } }}>Reset demo</button>
                   )}
-                  <button className="rounded bg-white/10 px-2 py-0.5" onClick={async () => { await store.signOut(); await refresh() }}>Sign out</button>
+                  <button className="rounded border border-slate-300 px-2 py-0.5" onClick={async () => { await store.signOut(); await refresh() }}>Sign out</button>
                 </div>
               </div>
             </header>

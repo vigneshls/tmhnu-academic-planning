@@ -1,8 +1,8 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
+import { buildSections, computeDemand } from '../engine/calc'
 import { defaultRuleSet } from '../engine/rules'
 import { sampleSchoolData, staffFromDemand } from '../engine/sample'
-import { buildSections, computeDemand } from '../engine/calc'
-import type { Board, RuleSet, School, SchoolData } from '../engine/types'
+import type { Board, RuleSet, School, SchoolData, Staff } from '../engine/types'
 
 export type Role = 'admin' | 'principal'
 export interface Profile {
@@ -22,14 +22,23 @@ export interface Store {
   getRules(board: Board): Promise<RuleSet>
   saveRules(r: RuleSet): Promise<void>
   getSchoolData(schoolId: string): Promise<SchoolData>
+  /** Saves everything except the faculty list (principal or admin) */
   saveSchoolData(schoolId: string, d: SchoolData): Promise<void>
+  /** Saves the faculty list (management only) */
+  saveStaff(schoolId: string, staff: Staff[]): Promise<void>
 }
 
 export const emptySchoolData = (): SchoolData => ({ strength: {}, hss: { '11': {}, '12': {} }, staff: [], genderSeparate: true })
 
-// ------------------------------------------------------------------ demo (browser only)
+export const SCHOOLS: School[] = [
+  { id: 'nsv-mhss', name: 'NS Vidyalaya Matriculation Higher Secondary School', board: 'MATRIC' },
+  { id: 'tmhnu-mhss', name: 'TMHNU Matriculation Higher Secondary School, Muthuthevanpatti', board: 'MATRIC' },
+  { id: 'ns-mhss-vp', name: 'NS Matriculation Higher Secondary School, Vadapudupatti', board: 'MATRIC' },
+]
 
-const LS = 'tmhnu-demo-v2'
+// ------------------------------------------------------------------ demo (browser only, fictional figures)
+
+const LS = 'tmhnu-demo-v3'
 interface DemoDB {
   schools: School[]
   rules: Partial<Record<Board, RuleSet>>
@@ -49,28 +58,45 @@ function safeSet(db: DemoDB) {
   try {
     localStorage.setItem(LS, JSON.stringify(db))
   } catch {
-    /* storage full or blocked — keep in memory */
+    /* storage blocked or full — keep in memory */
   }
 }
 
+/** Fictional sample faculty so the demo shows the checks working. Not real staff. */
+function demoStaff(board: Board, d: SchoolData, k: number): Staff[] {
+  const rules = defaultRuleSet(board)
+  const base = staffFromDemand(rules, computeDemand(rules, buildSections(rules, d), []))
+  const out = base
+    .filter((_, i) => i % 19 !== k) // leave a few gaps
+    .map((s, i): Staff => {
+      const primary = s.category === 'SGT' || s.category === 'MONTESSORI'
+      return {
+        ...s,
+        name: `Sample Teacher ${i + 1}`,
+        employeeId: `T${String(i + 1).padStart(3, '0')}`,
+        highestQualification: s.category === 'PGT' ? 'PG' : primary ? (i % 5 === 0 ? 'HSC' : 'UG') : 'UG',
+        professionalQualification: primary ? (i % 6 === 0 ? 'BED' : s.category === 'MONTESSORI' ? 'NTT' : 'DELED') : 'BED',
+        tet: s.category === 'SGT' ? (i % 4 === 0 ? 'NOT_PASSED' : 'TNTET1') : s.category === 'TGT' ? (i % 5 === 0 ? 'NOT_PASSED' : 'TNTET2') : 'NA',
+        appointment: i % 7 === 0 ? 'CONTRACT' : 'REGULAR',
+        experienceYears: (i * 3) % 18,
+        cpdHours: (i * 11) % 60,
+      }
+    })
+  out.push({ id: 'p1', name: 'Sample Principal', category: 'PRINCIPAL', subjects: [], highestQualification: 'PG', professionalQualification: 'MED', appointment: 'REGULAR', experienceYears: 20, cpdHours: 50 })
+  if (k !== 1) out.push({ id: 'c1', name: 'Sample Counsellor', category: 'COUNSELLOR', subjects: ['Counselling'], highestQualification: 'PG', professionalQualification: 'NONE', appointment: 'REGULAR', experienceYears: 4 })
+  out.push({ id: 'l1', name: 'Sample Librarian', category: 'LIBRARIAN', subjects: [], highestQualification: 'UG', appointment: 'REGULAR' })
+  return out
+}
+
 function seedDemo(): DemoDB {
-  const schools: School[] = [
-    { id: 'S1', name: 'Demo School 1', board: 'CBSE' },
-    { id: 'S2', name: 'Demo School 2', board: 'MATRIC' },
-    { id: 'S3', name: 'Demo School 3', board: 'STATE' },
-    { id: 'S4', name: 'Demo School 4', board: 'MATRIC' },
-    { id: 'S5', name: 'Demo School 5', board: 'STATE' },
-  ]
   const data: Record<string, SchoolData> = {}
-  schools.forEach((s, i) => {
-    const rules = defaultRuleSet(s.board)
-    const d = sampleSchoolData(rules)
-    const staff = staffFromDemand(rules, computeDemand(rules, buildSections(rules, d), []))
-    // leave a few deliberate vacancies so the shortage view has something to show
-    d.staff = staff.filter((_, k) => k % 17 !== i)
+  SCHOOLS.forEach((s, k) => {
+    const d = sampleSchoolData(defaultRuleSet(s.board))
+    d.staff = demoStaff(s.board, d, k)
+    d.staffUpdatedAt = new Date().toISOString()
     data[s.id] = d
   })
-  return { schools, rules: {}, data, profile: null }
+  return { schools: SCHOOLS.map((s) => ({ ...s })), rules: {}, data, profile: null }
 }
 
 class DemoStore implements Store {
@@ -79,11 +105,11 @@ class DemoStore implements Store {
   private save() { safeSet(this.db) }
   async currentProfile() { return this.db.profile }
   async signIn(email: string) {
-    // demo: "admin" or "principal:S2"
     const [role, school] = email.split(':')
+    const s = this.db.schools.find((x) => x.id === school)
     this.db.profile =
-      role === 'principal'
-        ? { email, role: 'principal', schoolId: school ?? 'S1', name: `Principal (${school ?? 'S1'})` }
+      role === 'principal' && s
+        ? { email, role: 'principal', schoolId: s.id, name: `Principal — ${s.name.split(',')[0]}` }
         : { email: 'management', role: 'admin', schoolId: null, name: 'Management' }
     this.save()
   }
@@ -93,19 +119,35 @@ class DemoStore implements Store {
     return p?.role === 'principal' ? this.db.schools.filter((s) => s.id === p.schoolId) : this.db.schools
   }
   async saveSchool(s: School) {
+    if (this.db.profile?.role !== 'admin') throw new Error('Only management can edit schools.')
     const i = this.db.schools.findIndex((x) => x.id === s.id)
     if (i >= 0) this.db.schools[i] = s
     else this.db.schools.push(s)
     this.save()
   }
   async getRules(board: Board) { return this.db.rules[board] ?? defaultRuleSet(board) }
-  async saveRules(r: RuleSet) { this.db.rules[r.board] = r; this.save() }
-  async getSchoolData(id: string) { return this.db.data[id] ?? emptySchoolData() }
-  async saveSchoolData(id: string, d: SchoolData) { this.db.data[id] = d; this.save() }
+  async saveRules(r: RuleSet) {
+    if (this.db.profile?.role !== 'admin') throw new Error('Only management can edit rules.')
+    this.db.rules[r.board] = r
+    this.save()
+  }
+  async getSchoolData(id: string) { return structuredClone(this.db.data[id] ?? emptySchoolData()) }
+  async saveSchoolData(id: string, d: SchoolData) {
+    const staff = this.db.data[id]?.staff ?? []
+    const staffUpdatedAt = this.db.data[id]?.staffUpdatedAt
+    this.db.data[id] = { ...d, staff, staffUpdatedAt }
+    this.save()
+  }
+  async saveStaff(id: string, staff: Staff[]) {
+    if (this.db.profile?.role !== 'admin') throw new Error('Only management can change the faculty list.')
+    const cur = this.db.data[id] ?? emptySchoolData()
+    this.db.data[id] = { ...cur, staff, staffUpdatedAt: new Date().toISOString() }
+    this.save()
+  }
   reset() { this.db = seedDemo(); this.save() }
 }
 
-// ------------------------------------------------------------------ supabase
+// ------------------------------------------------------------------ supabase (real logins, RLS enforced)
 
 class SupabaseStore implements Store {
   mode = 'supabase' as const
@@ -123,7 +165,7 @@ class SupabaseStore implements Store {
     if (!data.user) return null
     const { data: p, error } = await this.sb.from('profiles').select('role, school_id, full_name').eq('user_id', data.user.id).maybeSingle()
     if (error) throw new Error(error.message)
-    if (!p) throw new Error('No profile found for this login. Ask management to add you in the profiles table.')
+    if (!p) throw new Error('No profile found for this login. Ask management to link your account to a school.')
     return { email: data.user.email ?? '', role: p.role, schoolId: p.school_id, name: p.full_name ?? data.user.email ?? '' }
   }
   async signIn(email: string, password: string) {
@@ -152,14 +194,26 @@ class SupabaseStore implements Store {
     await this.audit('save_rules', null, { board: r.board })
   }
   async getSchoolData(id: string) {
-    const { data, error } = await this.sb.from('school_data').select('data').eq('school_id', id).maybeSingle()
-    if (error) throw new Error(error.message)
-    return (data?.data as SchoolData) ?? emptySchoolData()
+    const [d, st] = await Promise.all([
+      this.sb.from('school_data').select('data').eq('school_id', id).maybeSingle(),
+      this.sb.from('school_staff').select('data, updated_at').eq('school_id', id).maybeSingle(),
+    ])
+    if (d.error) throw new Error(d.error.message)
+    if (st.error) throw new Error(st.error.message)
+    const base = (d.data?.data as SchoolData) ?? emptySchoolData()
+    return { ...base, staff: (st.data?.data as Staff[]) ?? [], staffUpdatedAt: st.data?.updated_at ?? undefined }
   }
   async saveSchoolData(id: string, d: SchoolData) {
-    const { error } = await this.sb.from('school_data').upsert({ school_id: id, data: d, updated_at: new Date().toISOString() })
+    const { staff: _s, staffUpdatedAt: _u, ...rest } = d
+    void _s; void _u
+    const { error } = await this.sb.from('school_data').upsert({ school_id: id, data: { ...rest, staff: [] }, updated_at: new Date().toISOString() })
     if (error) throw new Error(error.message)
-    await this.audit('save_school_data', id, { staff: d.staff.length, timetable: !!d.timetable })
+    await this.audit('save_school_data', id, { timetable: !!d.timetable })
+  }
+  async saveStaff(id: string, staff: Staff[]) {
+    const { error } = await this.sb.from('school_staff').upsert({ school_id: id, data: staff, updated_at: new Date().toISOString() })
+    if (error) throw new Error(error.message)
+    await this.audit('upload_faculty', id, { rows: staff.length })
   }
 }
 

@@ -44,7 +44,7 @@ export default function TimetableTab({ rules, school, data, sections, onChange }
   return (
     <div className="space-y-4">
       <div className="no-print flex flex-wrap items-center gap-2">
-        <button disabled={busy} onClick={generate} className="rounded bg-indigo-700 px-4 py-2 text-sm font-medium text-white">
+        <button disabled={busy} onClick={generate} className="rounded bg-[#1f3a5f] px-4 py-2 text-sm font-medium text-white">
           {busy ? 'Generating…' : tt ? 'Re-generate timetable' : 'Generate timetable'}
         </button>
         {tt && (
@@ -68,7 +68,7 @@ export default function TimetableTab({ rules, school, data, sections, onChange }
         )}
       </div>
       {err && <p role="alert" className="text-sm text-red-600">{err}</p>}
-      {!tt && <p className="text-sm text-zinc-500">Uses the staff list from tab 3. Missing teachers are filled with “Vacancy” placeholders so you can still see the full timetable.</p>}
+      {!tt && <p className="text-sm text-slate-500">Uses the staff list from tab 3. Missing teachers are filled with “Vacancy” placeholders so you can still see the full timetable.</p>}
       {tt && <Status tt={tt} rules={rules} stale={stale} />}
       {tt && view === 'class' && <ClassGrid tt={tt} rules={rules} sectionId={selSection || tt.sections[0]?.id} title={school.name} />}
       {tt && view === 'teacher' && <TeacherGrid tt={tt} rules={rules} teacherId={selTeacher || tt.teachers[0]?.id} title={school.name} />}
@@ -91,7 +91,7 @@ function Status({ tt, rules, stale }: { tt: TimetableResult; rules: RuleSet; sta
         {missing ? `✗ ${missing} period(s) could not be placed: ${tt.unplaced.slice(0, 5).map((u) => u.lessonId.replace('|', ' – ')).join(', ')}` : '✓ Every subject got its full weekly periods'}
       </p>
       {vac.length > 0 && <p className="text-amber-700">⚠ {vac.length} vacancy placeholder(s): {vac.map((v) => v.name).join(', ')}</p>}
-      <p className="text-xs text-zinc-500">Generated {new Date(tt.generatedAt).toLocaleString()} · placement score {tt.softScore}</p>
+      <p className="text-xs text-slate-500">Generated {new Date(tt.generatedAt).toLocaleString()} · placement score {tt.softScore}</p>
     </div>
   )
 }
@@ -114,7 +114,7 @@ function ClassGrid({ tt, rules, sectionId, title }: { tt: TimetableResult; rules
   const heads = periodHeads(rules)
   return (
     <div className="rounded-lg border bg-white p-3">
-      <h3 className="mb-2 font-semibold">{title} — {sec.label} <span className="text-sm font-normal text-zinc-500">({sec.strength} students)</span></h3>
+      <h3 className="mb-2 font-semibold">{title} — {sec.label} <span className="text-sm font-normal text-slate-500">({sec.strength} students)</span></h3>
       <div className="overflow-x-auto">
         <table className="grid-table">
           <thead><tr><th>Day</th>{heads.map((h) => [<th key={h.p}>{h.label}</th>, h.after ? <th key={h.p + 'b'} className="w-4 text-[10px]">{h.after[0]}</th> : null])}</tr></thead>
@@ -127,9 +127,9 @@ function ClassGrid({ tt, rules, sectionId, title }: { tt: TimetableResult; rules
                   const t = c?.teacherId ? tName.get(c.teacherId) : null
                   return [
                     <td key={h.p} className={c ? colorFor(c.subject) : 'bg-red-50'}>
-                      {c ? (<><div className="font-medium">{c.subject}</div><div className={`text-[10px] ${t?.vacancy ? 'text-red-600' : 'text-zinc-600'}`}>{t?.name ?? ''}</div></>) : <span className="text-red-500">—</span>}
+                      {c ? (<><div className="font-medium">{c.subject}</div><div className={`text-[10px] ${t?.vacancy ? 'text-red-600' : 'text-slate-600'}`}>{t?.name ?? ''}</div></>) : <span className="text-red-500">—</span>}
                     </td>,
-                    h.after ? <td key={h.p + 'b'} className="bg-zinc-100" /> : null,
+                    h.after ? <td key={h.p + 'b'} className="bg-slate-100" /> : null,
                   ]
                 })}
               </tr>
@@ -155,7 +155,7 @@ function TeacherGrid({ tt, rules, teacherId, title }: { tt: TimetableResult; rul
   }
   return (
     <div className="rounded-lg border bg-white p-3">
-      <h3 className="mb-2 font-semibold">{title} — {t.name} <span className="text-sm font-normal text-zinc-500">({load} periods/week · max {t.maxPerWeek}, {t.maxPerDay}/day)</span></h3>
+      <h3 className="mb-2 font-semibold">{title} — {t.name} <span className="text-sm font-normal text-slate-500">({load} periods/week · max {t.maxPerWeek}, {t.maxPerDay}/day)</span></h3>
       <div className="overflow-x-auto">
         <table className="grid-table">
           <thead><tr><th>Day</th>{heads.map((h) => [<th key={h.p}>{h.label}</th>, h.after ? <th key={h.p + 'b'} className="w-4 text-[10px]">{h.after[0]}</th> : null])}<th>Total</th></tr></thead>
@@ -170,9 +170,9 @@ function TeacherGrid({ tt, rules, teacherId, title }: { tt: TimetableResult; rul
                     if (x) n++
                     return [
                       <td key={h.p} className={x ? colorFor(x.c.subject) : ''}>
-                        {x ? (<><div className="font-medium">{x.s.label}</div><div className="text-[10px] text-zinc-600">{x.c.subject}</div></>) : <span className="text-zinc-300">free</span>}
+                        {x ? (<><div className="font-medium">{x.s.label}</div><div className="text-[10px] text-slate-600">{x.c.subject}</div></>) : <span className="text-slate-300">free</span>}
                       </td>,
-                      h.after ? <td key={h.p + 'b'} className="bg-zinc-100" /> : null,
+                      h.after ? <td key={h.p + 'b'} className="bg-slate-100" /> : null,
                     ]
                   })}
                   <td className="font-semibold">{n}</td>

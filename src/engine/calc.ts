@@ -1,6 +1,6 @@
 import { categoryForStage, effectiveLimits, isClassTeacherStage, stageOf } from './rules'
 import type { Category, DemandRow, RuleSet, SchoolData, Section, Stage, Staff } from './types'
-import { HSS_STANDARDS, STANDARDS } from './types'
+import { HSS_STANDARDS, STANDARDS, isTeachingCategory } from './types'
 
 const LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
 
@@ -170,7 +170,7 @@ export function summarize(rules: RuleSet, data: SchoolData, sections: Section[],
   for (const [std, p] of per) if (Number(std) >= 6) { boys += p.boys; girls += p.girls }
 
   const needed = demand.reduce((a, d) => a + d.needed, 0)
-  const teaching = data.staff.filter((s) => s.category !== 'PRINCIPAL')
+  const teaching = data.staff.filter((s) => s.category !== 'PRINCIPAL' && isTeachingCategory(s.category))
   const available = teaching.length
   const shortage = demand.reduce((a, d) => a + Math.max(0, -d.gap), 0)
   const ptr = available > 0 ? Math.round((students / available) * 10) / 10 : null
@@ -181,7 +181,7 @@ export function summarize(rules: RuleSet, data: SchoolData, sections: Section[],
     if (s.strength > cap) checks.push({ ok: false, text: `${s.label}: ${s.strength} students exceeds cap ${cap}` })
   }
   if (rules.minTeachersPerSection && sections.length > 0) {
-    const ratio = teaching.filter((t) => !/PE/i.test(t.subjects[0] ?? '')).length / sections.length
+    const ratio = teaching.filter((t) => !/(^|\W)PE(\W|$)|physical/i.test(t.subjects[0] ?? '')).length / sections.length
     checks.push({
       ok: ratio >= rules.minTeachersPerSection,
       text: `Teachers per section: ${ratio.toFixed(2)} (CBSE minimum ${rules.minTeachersPerSection})`,

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useAuth } from '../App'
-import { store } from '../data/store'
+import { SCHOOLS, store } from '../data/store'
 
 export default function Login({ error }: { error: string }) {
   const { refresh } = useAuth()
@@ -23,40 +23,42 @@ export default function Login({ error }: { error: string }) {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-indigo-900 to-indigo-700 p-4">
-      <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-xl">
-        <h1 className="text-xl font-semibold text-indigo-900">TMHNU Staffing & Timetable</h1>
-        <p className="mb-5 text-sm text-zinc-500">ஆசிரியர் தேவை கணக்கீடு & பாடவேளை அட்டவணை — 5 schools · CBSE / Matric / State Board</p>
+    <div className="flex min-h-screen items-center justify-center bg-slate-100 p-4">
+      <div className="w-full max-w-lg rounded-lg border border-slate-200 bg-white p-8">
+        <div className="mb-6 flex items-center gap-3">
+          <span className="grid h-10 w-10 place-items-center rounded bg-[#1f3a5f] font-bold text-white">T</span>
+          <div>
+            <h1 className="text-lg font-semibold text-slate-900">TMHNU Schools — Academic Planning</h1>
+            <p className="text-sm text-slate-500">Staffing, timetables and compliance for CBSE and Matriculation schools</p>
+          </div>
+        </div>
 
         {store.mode === 'demo' ? (
           <div className="space-y-3">
-            <p className="rounded bg-amber-50 p-3 text-sm text-amber-900">
-              Demo mode: fictional data, stored only in this browser. Connect Supabase to enable real logins.
+            <p className="rounded border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+              Demonstration mode: sample figures and fictional staff, stored only in this browser. Real logins are enabled once the database is connected.
             </p>
-            <button disabled={busy} className="w-full rounded bg-indigo-700 py-2 font-medium text-white hover:bg-indigo-800" onClick={() => go('admin', '')}>
-              Enter as Management (all 5 schools)
+            <button disabled={busy} className="w-full rounded bg-[#1f3a5f] py-2.5 font-medium text-white hover:bg-[#17304f]" onClick={() => go('admin', '')}>
+              Sign in as Management
             </button>
-            <div className="grid grid-cols-5 gap-2">
-              {['S1', 'S2', 'S3', 'S4', 'S5'].map((s, i) => (
-                <button key={s} disabled={busy} className="rounded border border-indigo-300 py-2 text-xs text-indigo-800 hover:bg-indigo-50" onClick={() => go(`principal:${s}`, '')}>
-                  Principal {i + 1}
-                </button>
-              ))}
-            </div>
+            <p className="pt-2 text-xs font-medium uppercase tracking-wide text-slate-500">Sign in as Principal</p>
+            {SCHOOLS.map((s) => (
+              <button key={s.id} disabled={busy} className="block w-full rounded border border-slate-300 px-3 py-2 text-left text-sm hover:bg-slate-50" onClick={() => go(`principal:${s.id}`, '')}>
+                {s.name}
+              </button>
+            ))}
           </div>
         ) : (
-          <form className="space-y-3" onSubmit={(e) => { e.preventDefault(); void go() }}>
-            <label className="block text-sm">
+          <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); void go() }}>
+            <label className="block text-sm font-medium">
               Email
-              <input type="email" required autoComplete="username" className="mt-1 w-full rounded border px-3 py-2" value={email} onChange={(e) => setEmail(e.target.value)} />
+              <input type="email" required autoComplete="username" className="mt-1 w-full rounded border border-slate-300 px-3 py-2 font-normal" value={email} onChange={(e) => setEmail(e.target.value)} />
             </label>
-            <label className="block text-sm">
+            <label className="block text-sm font-medium">
               Password
-              <input type="password" required autoComplete="current-password" className="mt-1 w-full rounded border px-3 py-2" value={password} onChange={(e) => setPassword(e.target.value)} />
+              <input type="password" required autoComplete="current-password" className="mt-1 w-full rounded border border-slate-300 px-3 py-2 font-normal" value={password} onChange={(e) => setPassword(e.target.value)} />
             </label>
-            <button disabled={busy} className="w-full rounded bg-indigo-700 py-2 font-medium text-white hover:bg-indigo-800">
-              {busy ? 'Signing in…' : 'Sign in'}
-            </button>
+            <button disabled={busy} className="w-full rounded bg-[#1f3a5f] py-2.5 font-medium text-white">{busy ? 'Signing in…' : 'Sign in'}</button>
           </form>
         )}
         {msg && <p role="alert" className="mt-3 text-sm text-red-600">{msg}</p>}

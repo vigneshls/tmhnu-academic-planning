@@ -18,6 +18,11 @@ const TMHNU_WORKLOAD: Record<Category, Workload> = {
   SPECIALIST: { min: 30, max: 36, target: 32, maxPerDay: 7 },
   ACAD_HEAD: { min: 15, max: 20, target: 15, maxPerDay: 4 },
   PRINCIPAL: { min: 0, max: 5, target: 0, maxPerDay: 2 },
+  SPECIAL_EDUCATOR: { min: 0, max: 0, target: 0, maxPerDay: 0 },
+  COUNSELLOR: { min: 0, max: 0, target: 0, maxPerDay: 0 },
+  CAREER_COUNSELLOR: { min: 0, max: 0, target: 0, maxPerDay: 0 },
+  LIBRARIAN: { min: 0, max: 0, target: 0, maxPerDay: 0 },
+  LAB_ASSISTANT: { min: 0, max: 0, target: 0, maxPerDay: 0 },
 }
 
 const s = (
@@ -167,8 +172,9 @@ export function defaultRuleSet(board: Board): RuleSet {
       hssGroups: CBSE_HSS,
       minTeachersPerSection: 1.5,
       notes: [
-        'CBSE Affiliation Bye-Laws cl. 4.8: optimum 40 students per section.',
-        'CBSE cl. 5.4: at least 1.5 teachers per section (excl. Principal, PET, counsellor); PTR not above 30:1.',
+        'CBSE Affiliation Bye-Laws 2018 cl. 4.8: optimum 40 students per section; Circular 11/2025: never more than 45, only in documented exceptional cases.',
+        'CBSE cl. 5.4: pupil–teacher ratio not above 30:1 and 1.5 teachers per section (excluding Principal, PE teacher and counsellor).',
+        'CBSE 2026-27 scheme: third language (R3) compulsory from Class 6, with at least two Indian languages. TN Tamil Learning Act 2006: Tamil to be taught in Classes 1–10.',
         'Subject period allocation is a sample — confirm with the school.',
       ],
     })
@@ -181,10 +187,10 @@ export function defaultRuleSet(board: Board): RuleSet {
     subjectsByStandard: bySt(PRE, SAM_1_2, SAM_3_5, SAM_6_8, SAM_9_10),
     hssGroups: SAM_HSS,
     notes: [
-      'Matric and State Board follow the common Samacheer Kalvi syllabus (TN Uniform System of School Education Act, 2010).',
-      'TN PTR norms (2019): Primary 1:30, Middle 1:35, High 1:40, Higher Secondary 1:60.',
-      'Classes 6–8 allocation from the management document (38 periods) + Computer Science 2 added to fill 40 slots.',
-      'Section caps are institution settings — confirm with the school.',
+      'Matriculation schools follow the common Samacheer Kalvi syllabus (TN Uniform System of School Education Act, 2010) and are regulated by the TN Private Schools (Regulation) Act 2018 and Rules 2023.',
+      'Rules 2023 fix staff strength from pupil strength under Government norms (Rule 28(1), 32(A)(1)) but state no section size; caps here follow TN norms — Primary 1:30, Middle 1:35, High 1:40 — as an institution setting.',
+      'RTE Act 2009 Schedule applies to Classes 1–8: PTR 30:1 (1–5) and 35:1 (6–8).',
+      'Classes 6–8 allocation from the management document (38 periods) + Computer Science 2 added to fill 40 slots. Other allocations are samples — confirm with the school.',
     ],
   })
 }
@@ -203,14 +209,21 @@ export function categoryForStage(stage: Stage): Category {
 }
 
 export const CATEGORY_LABEL: Record<Category, string> = {
-  MONTESSORI: 'Montessori / Pre-primary',
-  SGT: 'SGT (Classes 1–5)',
-  TGT: 'TGT (Classes 6–10)',
-  PGT: 'PGT (Classes 11–12)',
-  SPECIALIST: 'Specialist (PE/Art, Computer, Library, Hindi)',
-  ACAD_HEAD: 'Academic Head',
+  MONTESSORI: 'Pre-primary Teacher',
+  SGT: 'Primary Teacher (PRT / SGT)',
+  TGT: 'Graduate Teacher (TGT / BT Asst.)',
+  PGT: 'Post Graduate Teacher (PGT / PG Asst.)',
+  SPECIALIST: 'Specialist Teacher (PE, Art, Computer, Library, Hindi)',
+  ACAD_HEAD: 'Vice Principal / Academic Head',
   PRINCIPAL: 'Principal',
+  SPECIAL_EDUCATOR: 'Special Educator',
+  COUNSELLOR: 'Counsellor & Wellness Teacher',
+  CAREER_COUNSELLOR: 'Career Counsellor',
+  LIBRARIAN: 'Librarian',
+  LAB_ASSISTANT: 'Lab Assistant',
 }
+
+export const BOARD_LABEL: Record<Board, string> = { CBSE: 'CBSE', MATRIC: 'Matriculation (TN)', STATE: 'State Board' }
 
 /** Class-teacher stages: one teacher per section takes all non-specialist subjects */
 export const isClassTeacherStage = (st: Stage) => st === 'PRE' || st === 'PRIMARY'

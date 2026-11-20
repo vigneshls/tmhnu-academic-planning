@@ -1,6 +1,7 @@
 import { CLASS_TEACHER, teacherCategoryFor } from './calc'
 import { blocks, categoryForStage, effectiveLimits, isClassTeacherStage } from './rules'
 import type { Cell, Category, Lesson, RuleSet, Section, Staff, TeacherRef, TimetableResult } from './types'
+import { isTeachingCategory } from './types'
 
 const norm = (x: string) => x.trim().toLowerCase()
 
@@ -8,7 +9,7 @@ const norm = (x: string) => x.trim().toLowerCase()
 
 export function assignTeachers(rules: RuleSet, sections: Section[], staff: Staff[]) {
   const teachers: TeacherRef[] = staff
-    .filter((s) => s.category !== 'PRINCIPAL' || (s.maxPerWeek ?? 0) > 0)
+    .filter((s) => isTeachingCategory(s.category) && (s.category !== 'PRINCIPAL' || (s.maxPerWeek ?? 0) > 0))
     .map((s) => {
       const lim = effectiveLimits(rules, rules.workload[s.category], s)
       return { id: s.id, name: s.name, category: s.category, maxPerWeek: lim.perWeek, maxPerDay: lim.perDay, vacancy: false }

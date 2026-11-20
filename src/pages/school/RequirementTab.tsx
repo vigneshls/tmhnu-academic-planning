@@ -28,10 +28,10 @@ export default function RequirementTab({ rules, sections, demand, summary }: { r
       )}
 
       <div>
-        <h3 className="mb-2 font-semibold">Standard-wise sections (வகுப்பு வாரியான பிரிவுகள்)</h3>
+        <h3 className="mb-2 font-semibold">Standard-wise sections</h3>
         <div className="overflow-x-auto rounded-lg border bg-white">
           <table className="w-full text-sm">
-            <thead className="bg-zinc-100 text-left"><tr><th className="p-2">Standard</th><th className="p-2 text-right">Boys</th><th className="p-2 text-right">Girls</th><th className="p-2 text-right">Students</th><th className="p-2 text-right">Sections</th><th className="p-2">Section sizes</th></tr></thead>
+            <thead className="bg-slate-100 text-left"><tr><th className="p-2">Standard</th><th className="p-2 text-right">Boys</th><th className="p-2 text-right">Girls</th><th className="p-2 text-right">Students</th><th className="p-2 text-right">Sections</th><th className="p-2">Section sizes</th></tr></thead>
             <tbody>
               {summary.perStandard.map((p) => (
                 <tr key={p.standard} className="border-t">
@@ -40,7 +40,7 @@ export default function RequirementTab({ rules, sections, demand, summary }: { r
                   <td className="p-2 text-right">{Number(p.standard) >= 6 ? p.girls : '–'}</td>
                   <td className="p-2 text-right">{p.students}</td>
                   <td className="p-2 text-right font-semibold">{p.sections}</td>
-                  <td className="p-2 text-xs text-zinc-500">{sections.filter((s) => s.standard === p.standard).map((s) => `${s.label.replace(/^\S+\s/, '')}: ${s.strength}`).join(' · ')}</td>
+                  <td className="p-2 text-xs text-slate-500">{sections.filter((s) => s.standard === p.standard).map((s) => `${s.label.replace(/^\S+\s/, '')}: ${s.strength}`).join(' · ')}</td>
                 </tr>
               ))}
             </tbody>
@@ -50,18 +50,18 @@ export default function RequirementTab({ rules, sections, demand, summary }: { r
 
       <div>
         <div className="mb-2 flex items-center">
-          <h3 className="font-semibold">Teachers needed — subject-wise (பாட வாரியான ஆசிரியர் தேவை)</h3>
+          <h3 className="font-semibold">Teachers needed — subject-wise</h3>
           <button className="ml-auto rounded border px-3 py-1 text-sm" onClick={() => downloadCsv('teacher-requirement.csv', [['Category', 'Subject', 'Periods/week', 'Planning load', 'Needed', 'Available', 'Gap'], ...demand.map((d) => [CATEGORY_LABEL[d.category], d.subject, d.periods, d.target, d.needed, d.available, d.gap])])}>
             Export CSV
           </button>
         </div>
         <div className="overflow-x-auto rounded-lg border bg-white">
           <table className="w-full text-sm">
-            <thead className="bg-zinc-100 text-left"><tr><th className="p-2">Subject</th><th className="p-2 text-right">Periods / week</th><th className="p-2 text-right">Load per teacher</th><th className="p-2 text-right">Needed</th><th className="p-2 text-right">Available</th><th className="p-2 text-right">Gap</th></tr></thead>
+            <thead className="bg-slate-100 text-left"><tr><th className="p-2">Subject</th><th className="p-2 text-right">Periods / week</th><th className="p-2 text-right">Load per teacher</th><th className="p-2 text-right">Needed</th><th className="p-2 text-right">Available</th><th className="p-2 text-right">Gap</th></tr></thead>
             <tbody>
               {cats.map((c) => (
                 <Fragment key={c}>
-                  <tr className="border-t bg-indigo-50"><td colSpan={6} className="p-2 font-semibold text-indigo-900">{CATEGORY_LABEL[c]}</td></tr>
+                  <tr className="border-t bg-slate-100"><td colSpan={6} className="p-2 font-semibold text-[#1f3a5f]">{CATEGORY_LABEL[c]}</td></tr>
                   {demand.filter((d) => d.category === c).map((d) => (
                     <tr key={d.key} className="border-t">
                       <td className="p-2">{d.subject}</td>
@@ -77,7 +77,7 @@ export default function RequirementTab({ rules, sections, demand, summary }: { r
             </tbody>
           </table>
         </div>
-        <p className="mt-2 text-xs text-zinc-500">
+        <p className="mt-2 text-xs text-slate-500">
           Needed = each section's subject taught by one teacher, packed up to the planning load. Pre-primary and Classes 1–5 get one class teacher per section.
           Available counts staff by category and main (first) subject. Negative gap = shortage, positive = surplus.
         </p>

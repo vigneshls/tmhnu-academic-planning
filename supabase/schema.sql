@@ -30,6 +30,13 @@ create table if not exists public.school_data (
   updated_at timestamptz not null default now()
 );
 
+-- Faculty list is kept separately so only management can change it
+create table if not exists public.school_staff (
+  school_id uuid primary key references public.schools (id) on delete cascade,
+  data jsonb not null,
+  updated_at timestamptz not null default now()
+);
+
 create table if not exists public.audit_log (
   id bigserial primary key,
   at timestamptz not null default now(),
@@ -54,6 +61,7 @@ alter table public.schools     enable row level security;
 alter table public.profiles    enable row level security;
 alter table public.rule_sets   enable row level security;
 alter table public.school_data enable row level security;
+alter table public.school_staff enable row level security;
 alter table public.audit_log   enable row level security;
 
 -- schools
@@ -75,6 +83,10 @@ create policy data_update on public.school_data for update using (public.is_admi
   with check (public.is_admin() or school_id = public.my_school());
 create policy data_delete on public.school_data for delete using (public.is_admin());
 
+-- faculty: management writes, principal reads own school
+create policy staff_read  on public.school_staff for select using (public.is_admin() or school_id = public.my_school());
+create policy staff_write on public.school_staff for all    using (public.is_admin()) with check (public.is_admin());
+
 -- audit log: users write their own entries, management reads
 create policy audit_insert on public.audit_log for insert with check (user_id = auth.uid());
 create policy audit_read   on public.audit_log for select using (public.is_admin());
@@ -83,13 +95,14 @@ create policy audit_read   on public.audit_log for select using (public.is_admin
 -- After creating users in Authentication → Users, link them (example):
 --
 -- insert into public.schools (name, board) values
---   ('School 1', 'CBSE'), ('School 2', 'MATRIC'), ('School 3', 'STATE'),
---   ('School 4', 'MATRIC'), ('School 5', 'STATE');
+--   ('NS Vidyalaya Matriculation Higher Secondary School', 'MATRIC'),
+--   ('TMHNU Matriculation Higher Secondary School, Muthuthevanpatti', 'MATRIC'),
+--   ('NS Matriculation Higher Secondary School, Vadapudupatti', 'MATRIC');
 --
 -- insert into public.profiles (user_id, role, full_name)
 --   select id, 'admin', 'Management' from auth.users where email = 'management@example.com';
 --
 -- insert into public.profiles (user_id, role, school_id, full_name)
---   select u.id, 'principal', s.id, 'Principal School 1'
+--   select u.id, 'principal', s.id, 'Principal — NS Vidyalaya'
 --   from auth.users u, public.schools s
---   where u.email = 'principal1@example.com' and s.name = 'School 1';
+--   where u.email = 'principal1@example.com' and s.name = 'NS Vidyalaya Matriculation Higher Secondary School';

@@ -8,6 +8,20 @@ export type Category =
   | 'SPECIALIST'
   | 'ACAD_HEAD'
   | 'PRINCIPAL'
+  // support roles — not timetabled, not counted as subject teachers
+  | 'SPECIAL_EDUCATOR'
+  | 'COUNSELLOR'
+  | 'CAREER_COUNSELLOR'
+  | 'LIBRARIAN'
+  | 'LAB_ASSISTANT'
+
+export const SUPPORT_CATEGORIES: Category[] = ['SPECIAL_EDUCATOR', 'COUNSELLOR', 'CAREER_COUNSELLOR', 'LIBRARIAN', 'LAB_ASSISTANT']
+export const isTeachingCategory = (c: Category) => !SUPPORT_CATEGORIES.includes(c)
+
+export type HighestQualification = 'HSC' | 'DIPLOMA' | 'UG' | 'PG' | 'MPHIL' | 'PHD' | ''
+export type ProfessionalQualification = 'DELED' | 'BELED' | 'BED' | 'MED' | 'NTT' | 'BPED' | 'SPLED' | 'NONE' | ''
+export type TetStatus = 'TNTET1' | 'TNTET2' | 'TNTET_BOTH' | 'CTET1' | 'CTET2' | 'CTET_BOTH' | 'NOT_PASSED' | 'NA' | ''
+export type Appointment = 'REGULAR' | 'PROBATION' | 'CONTRACT' | 'PART_TIME' | ''
 export type SlotPref = 'morning' | 'afternoon' | 'last' | 'any'
 
 export const STANDARDS = [
@@ -81,6 +95,22 @@ export interface Staff {
   subjects: string[]
   maxPerWeek?: number
   maxPerDay?: number
+  employeeId?: string
+  highestQualification?: HighestQualification
+  professionalQualification?: ProfessionalQualification
+  tet?: TetStatus
+  appointment?: Appointment
+  dateOfJoining?: string
+  experienceYears?: number
+  /** Continuous Professional Development hours completed in the current academic year */
+  cpdHours?: number
+}
+
+export interface ComplianceEntry {
+  done: boolean
+  date?: string
+  note?: string
+  by?: string
 }
 
 export interface SchoolData {
@@ -92,6 +122,10 @@ export interface SchoolData {
   /** Separate boys/girls sections from Class 6 upward */
   genderSeparate: boolean
   timetable?: TimetableResult
+  /** Checklist items confirmed by the school (id → entry) */
+  compliance?: Record<string, ComplianceEntry>
+  /** When the faculty list was last uploaded */
+  staffUpdatedAt?: string
 }
 
 export interface School {

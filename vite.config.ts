@@ -8,6 +8,6 @@ import { viteSingleFile } from 'vite-plugin-singlefile'
 export default defineConfig(({ mode }) => ({
   base: './',
   plugins: [react(), tailwindcss(), ...(mode === 'standalone' ? [viteSingleFile()] : [])],
-  build: mode === 'standalone' ? { outDir: 'dist-standalone' } : {},
+  build: mode === 'standalone' ? { outDir: 'dist-standalone', assetsInlineLimit: 100_000_000 } : {},
   test: { environment: 'node' },
 } as any))
