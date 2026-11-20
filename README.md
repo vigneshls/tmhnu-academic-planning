@@ -33,6 +33,12 @@ A web app for managing teacher requirements and timetables across 5 schools: CBS
 
 **Known conflict in the source documents:** with 8 periods a day, lunch after period 4 and the 3-continuous-period rule, a teacher can take at most 6 periods a day (30 a week). TMHNU's TGT range of 32–36 therefore can't be scheduled. The app uses the schedulable limit and shows a warning. To change this, go to Board Rules and either tick *Short intervals also break the continuous count* or change the day structure. The full requirements are in [docs/REQUIREMENTS.md](docs/REQUIREMENTS.md).
 
+## Open without installing anything
+
+`npm run build:standalone` creates `dist-standalone/index.html`, a single file that opens by double-click. It runs in demo mode only.
+
+**Note:** the `index.html` in the repo root is the source file and will not open directly.
+
 ## Run locally
 
 ```bash
