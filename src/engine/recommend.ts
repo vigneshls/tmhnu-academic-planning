@@ -13,6 +13,7 @@ export type Area =
   | 'Curriculum'
   | 'Professional development'
   | 'Timetable & workload'
+  | 'Compliance & records'
   | 'Data quality'
 
 export interface Recommendation {
@@ -426,7 +427,77 @@ export function recommend(ctx: Ctx): Recommendation[] {
       source: SOURCES.PLANNING,
     })
 
+  // ------------------------------------------------------------ profile-based checks
+  const prof = data.profile ?? {}
+  const today = new Date(new Date().toISOString().slice(0, 10) + 'T00:00:00Z')
+  const daysTo = (iso: string) => Math.round((new Date(iso + 'T00:00:00Z').getTime() - today.getTime()) / 86400000)
+  const fmt = (iso: string) => new Date(iso + 'T00:00:00Z').toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'UTC' })
+  if (prof.recognitionValidUntil) {
+    const left = daysTo(prof.recognitionValidUntil)
+    add({
+      id: 'recognition', status: left > 90 ? 'pass' : 'fail', severity: left < 0 ? 'critical' : 'high', area: 'Compliance & records',
+      title: isCBSE ? 'Affiliation valid' : 'Recognition valid and renewal applied in time',
+      finding: left < 0 ? `Expired on ${fmt(prof.recognitionValidUntil)}.` : `Valid until ${fmt(prof.recognitionValidUntil)} (${left} days left).`,
+      action: isCBSE ? 'Apply for extension of affiliation well before expiry and keep the State recognition current.' : 'Apply for renewal at least 3 months before expiry, with valid structural stability certificate, building licence and Fire NOC.',
+      source: isCBSE ? SOURCES.PLANNING : SOURCES.TN_RULES_2023,
+    })
+  }
+  if (prof.workingDaysYear) {
+    const hours = prof.periodMinutes ? Math.round((prof.workingDaysYear * rules.periodsPerDay * prof.periodMinutes) / 60) : null
+    const checks: string[] = []
+    let ok = true
+    if (primary > 0) {
+      const dOk = prof.workingDaysYear >= 200
+      const hOk = hours === null || hours >= 800
+      ok = ok && dOk && hOk
+      checks.push(`Classes 1–5: ${prof.workingDaysYear} days (min 200)${hours !== null ? `, ${hours} teaching hours (min 800)` : ''}`)
+    }
+    if (upperPrimary > 0) {
+      const dOk = prof.workingDaysYear >= 220
+      const hOk = hours === null || hours >= 1000
+      ok = ok && dOk && hOk
+      checks.push(`Classes 6–8: ${prof.workingDaysYear} days (min 220)${hours !== null ? `, ${hours} teaching hours (min 1000)` : ''}`)
+    }
+    if (checks.length)
+      add({
+        id: 'rte-days', status: ok ? 'pass' : 'fail', severity: 'high', area: 'Curriculum',
+        title: 'RTE minimum working days and instructional hours',
+        finding: checks.join('; ') + (hours === null ? '. Period duration not given, so hours were not checked.' : '.'),
+        action: 'Extend the academic calendar or the teaching day so both minimums are met.',
+        source: SOURCES.RTE_DAYS,
+      })
+  }
+  const cwsnTotal = Object.values(data.cwsn ?? {}).reduce((a, b) => a + b, 0)
+  if (cwsnTotal > 0 && !isCBSE)
+    add({
+      id: 'cwsn', status: byCat('SPECIAL_EDUCATOR').length ? 'pass' : 'fail', severity: 'medium', area: 'Student support',
+      title: 'Support for children with special needs',
+      finding: `${cwsnTotal} child(ren) with special needs recorded; ${byCat('SPECIAL_EDUCATOR').length} special educator(s).`,
+      action: 'Appoint or share a qualified (RCI-registered) special educator and keep an individual support plan for each child.',
+      source: SOURCES.PLANNING,
+    })
+
+  // ------------------------------------------------------------ compliance statuses (from the workbook / checklist)
+  for (const item of checklist(board)) {
+    const e = data.compliance?.[item.id]
+    if (!e) continue
+    if (e.status === 'NO')
+      add({ id: `cmp-${item.id}`, status: 'fail', severity: /safety|recognition/i.test(item.area) ? 'critical' : 'high', area: 'Compliance & records', title: item.title, finding: `Marked "No" by the school${e.note ? ` — ${e.note}` : ''}.`, action: 'Put this in place and update the Compliance sheet.', source: item.source })
+    else if (e.validUntil && e.status !== 'NA') {
+      const left = daysTo(e.validUntil)
+      if (left <= 60)
+        add({ id: `cmp-${item.id}`, status: 'fail', severity: left < 0 ? 'critical' : 'high', area: 'Compliance & records', title: item.title, finding: left < 0 ? `Expired on ${fmt(e.validUntil)}.` : `Expires on ${fmt(e.validUntil)} (${left} days).`, action: 'Renew before expiry and record the new validity date.', source: item.source })
+    }
+  }
+
   // ------------------------------------------------------------ data quality
+  const missingProfile = [
+    !prof.recognitionValidUntil && 'recognition validity',
+    !prof.workingDaysYear && 'working days in the year',
+    !prof.periodMinutes && 'period duration',
+  ].filter(Boolean)
+  if (missingProfile.length && data.source !== 'sample')
+    add({ id: 'data-profile', status: 'fail', severity: 'low', area: 'Data quality', title: 'School profile incomplete', finding: `Not provided: ${missingProfile.join(', ')}.`, action: 'Fill these in the School Profile sheet and re-import; they enable recognition and RTE hour checks.', source: SOURCES.PLANNING })
   const blank = teaching.filter((s) => !hasValue(s.professionalQualification) || !hasValue(s.highestQualification) || (['SGT', 'TGT'].includes(s.category) && !hasValue(s.tet)))
   if (blank.length)
     add({

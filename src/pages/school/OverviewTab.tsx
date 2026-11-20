@@ -1,133 +1,119 @@
-import { useMemo, useState } from 'react'
-import type { SchoolSummary } from '../../engine/calc'
-import { checklist, score, type Area, type Recommendation, type Severity } from '../../engine/recommend'
-import { BOARD_LABEL } from '../../engine/rules'
+import { useState } from 'react'
+import type { Analysis } from '../../data/analyse'
+import { CLASS_TEACHER } from '../../engine/calc'
+import type { Area, Recommendation, Severity } from '../../engine/recommend'
+import { CATEGORY_LABEL } from '../../engine/rules'
 import type { School, SchoolData } from '../../engine/types'
+import { Badge, Button, Card, Kpi, NeedBars, ScoreRing, cx } from '../../ui/kit'
 
-const SEV: Record<Severity, string> = {
-  critical: 'bg-red-50 text-red-800 border-red-200',
-  high: 'bg-amber-50 text-amber-800 border-amber-200',
-  medium: 'bg-sky-50 text-sky-800 border-sky-200',
-  low: 'bg-slate-50 text-slate-700 border-slate-200',
-}
 const SEV_LABEL: Record<Severity, string> = { critical: 'Critical', high: 'High', medium: 'Medium', low: 'Advisory' }
 
-function SourceLink({ r }: { r: Pick<Recommendation, 'source'> }) {
+export function RecCard({ r }: { r: Recommendation }) {
   const ext = r.source.url.startsWith('http')
   return (
-    <span className="text-xs text-slate-500">
-      Basis:{' '}
-      {ext ? <a className="text-[#1f3a5f] underline" href={r.source.url} target="_blank" rel="noopener noreferrer">{r.source.title}</a> : <span>{r.source.title}</span>}
-      {r.source.ref && <> — {r.source.ref}</>}
-      {r.source.note && <span className="italic"> ({r.source.note})</span>}
-    </span>
+    <article className={cx('rounded-xl border bg-white p-4', r.status === 'pass' ? 'border-slate-200' : { critical: 'border-red-200', high: 'border-amber-200', medium: 'border-sky-200', low: 'border-slate-200' }[r.severity])}>
+      <div className="flex flex-wrap items-center gap-2">
+        <Badge tone={r.status === 'pass' ? 'pass' : r.severity}>{r.status === 'pass' ? 'Compliant' : SEV_LABEL[r.severity]}</Badge>
+        <span className="text-xs text-slate-500">{r.area}</span>
+      </div>
+      <h3 className="mt-2 font-semibold text-slate-900">{r.title}</h3>
+      <p className="mt-1 text-sm text-slate-600">{r.finding}</p>
+      {r.status === 'fail' && (
+        <div className="mt-3 rounded-lg bg-slate-50 px-3 py-2 text-sm">
+          <span className="font-medium text-slate-900">Recommended action: </span><span className="text-slate-700">{r.action}</span>
+        </div>
+      )}
+      {r.people && r.people.length > 0 && (
+        <details className="mt-2 text-sm">
+          <summary className="cursor-pointer text-[#0f2744]">{r.people.length} staff member(s)</summary>
+          <p className="mt-1 text-slate-600">{r.people.join(', ')}</p>
+        </details>
+      )}
+      <p className="mt-3 text-xs text-slate-500">
+        Basis: {ext ? <a className="text-[#0f2744] underline decoration-slate-300 underline-offset-2" href={r.source.url} target="_blank" rel="noopener noreferrer">{r.source.title}</a> : r.source.title}
+        {r.source.ref && <> — {r.source.ref}</>}{r.source.note && <span className="italic"> ({r.source.note})</span>}
+      </p>
+    </article>
   )
 }
 
-export default function OverviewTab({ school, data, summary, recs, onChange, userName }: { school: School; data: SchoolData; summary: SchoolSummary; recs: Recommendation[]; onChange: (d: SchoolData) => void; userName: string }) {
+export default function OverviewTab({ school, data, a, goTo }: { school: School; data: SchoolData; a: Analysis; goTo: (t: 'staffing' | 'compliance' | 'faculty') => void }) {
   const [filter, setFilter] = useState<'issues' | 'all' | 'passed'>('issues')
   const [area, setArea] = useState<Area | ''>('')
-  const sc = score(recs)
+  const { score: sc, summary: s, recs, demand } = a
   const areas = [...new Set(recs.map((r) => r.area))]
-  const shown = recs.filter((r) => (filter === 'all' ? true : filter === 'issues' ? r.status === 'fail' : r.status === 'pass') && (!area || r.area === area))
-  const items = useMemo(() => checklist(school.board), [school.board])
-  const done = items.filter((i) => data.compliance?.[i.id]?.done).length
-  const toggle = (id: string, v: boolean) =>
-    onChange({ ...data, compliance: { ...(data.compliance ?? {}), [id]: { done: v, date: v ? new Date().toISOString().slice(0, 10) : undefined, by: v ? userName : undefined, note: data.compliance?.[id]?.note } } })
-  const note = (id: string, v: string) => onChange({ ...data, compliance: { ...(data.compliance ?? {}), [id]: { ...(data.compliance?.[id] ?? { done: false }), note: v.slice(0, 200) } } })
+  const shown = recs.filter((r) => (filter === 'all' || (filter === 'issues' ? r.status === 'fail' : r.status === 'pass')) && (!area || r.area === area))
+  const byArea = areas.map((ar) => ({ ar, fail: recs.filter((r) => r.area === ar && r.status === 'fail').length, total: recs.filter((r) => r.area === ar).length }))
+  const bars = demand.filter((d) => d.needed > 0 || d.available > 0).sort((x, y) => (x.gap - y.gap) || y.needed - x.needed).slice(0, 10)
+    .map((d) => ({ label: d.subject === CLASS_TEACHER ? 'Class teachers' : d.subject, sub: CATEGORY_LABEL[d.category], needed: d.needed, available: d.available }))
+  const ptr = s.ptr
 
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-6">
-        <div className="col-span-2 rounded-lg border border-slate-200 bg-white p-4">
-          <div className="text-xs text-slate-500">Checks passed</div>
-          <div className="text-3xl font-semibold text-slate-900">{sc.pct}%</div>
-          <div className="mt-2 h-2 rounded bg-slate-100"><div className="h-2 rounded bg-[#1f3a5f]" style={{ width: `${sc.pct}%` }} /></div>
-          <div className="mt-1 text-xs text-slate-500">{sc.pass} of {sc.total} verifiable checks · {BOARD_LABEL[school.board]}</div>
-        </div>
-        {(['critical', 'high', 'medium', 'low'] as Severity[]).map((s) => (
-          <div key={s} className={`rounded-lg border p-4 ${SEV[s]}`}>
-            <div className="text-xs">{SEV_LABEL[s]}</div>
-            <div className="text-2xl font-semibold">{sc[s]}</div>
+      <div className="grid gap-5 lg:grid-cols-3">
+        <Card className="lg:col-span-1">
+          <div className="flex items-center gap-5">
+            <ScoreRing pct={sc.pct} label="Checks passed" />
+            <div>
+              <div className="text-sm font-medium text-slate-500">Checks passed</div>
+              <div className="text-sm text-slate-700">{sc.pass} of {sc.total} verifiable checks</div>
+              <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
+                {(['critical', 'high', 'medium', 'low'] as Severity[]).map((k) => (
+                  <button key={k} onClick={() => { setFilter('issues'); setArea('') }} className="flex items-center gap-2 text-left">
+                    <span className={cx('h-2 w-2 rounded-full', { critical: 'bg-red-500', high: 'bg-amber-500', medium: 'bg-sky-500', low: 'bg-slate-400' }[k])} />
+                    <span className="text-slate-600">{SEV_LABEL[k]}</span><b className="ml-auto tabular-nums text-slate-900">{sc[k]}</b>
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
-        ))}
+        </Card>
+        <div className="grid grid-cols-2 gap-4 lg:col-span-2 lg:grid-cols-3">
+          <Kpi label="Students" value={s.students} hint={`Boys ${s.boys6to12} · Girls ${s.girls6to12} (Class 6–12)`} />
+          <Kpi label="Sections" value={s.sections} hint={`${data.genderSeparate ? 'Separate' : 'Mixed'} boys/girls from Class 6`} />
+          <Kpi label="Pupil–teacher ratio" value={ptr ? `${ptr}:1` : '—'} hint={school.board === 'CBSE' ? 'CBSE limit 30:1' : 'RTE 30:1 (1–5), 35:1 (6–8)'} tone={ptr && ptr > 30 ? 'warn' : 'default'} />
+          <Kpi label="Teachers needed" value={s.needed} hint="Subject-wise, at planning load" />
+          <Kpi label="Teachers available" value={s.available} hint={`${data.staff.length} staff on record`} />
+          <Kpi label="Teacher shortage" value={s.shortage} tone={s.shortage ? 'bad' : 'good'} hint={s.shortage ? 'See Staffing' : 'All subjects covered'} />
+        </div>
       </div>
 
-      <div className="grid gap-3 md:grid-cols-4">
-        {([['Students', summary.students], ['Sections', summary.sections], ['Teachers needed (subject-wise)', summary.needed], ['Teachers available', summary.available]] as const).map(([k, v]) => (
-          <div key={k} className="rounded-lg border border-slate-200 bg-white p-3"><div className="text-xs text-slate-500">{k}</div><div className="text-xl font-semibold">{v}</div></div>
-        ))}
+      <div className="grid gap-5 lg:grid-cols-5">
+        <Card title="Teacher requirement by subject" subtitle="Largest gaps first" className="lg:col-span-3" actions={<Button variant="ghost" onClick={() => goTo('staffing')}>Full table →</Button>}>
+          {bars.length ? <NeedBars rows={bars} /> : <p className="text-sm text-slate-500">Enter student strength to calculate requirements.</p>}
+        </Card>
+        <Card title="Status by area" className="lg:col-span-2">
+          <ul className="space-y-3">
+            {byArea.map(({ ar, fail, total }) => (
+              <li key={ar}>
+                <button className="w-full text-left" onClick={() => { setArea(ar); setFilter('all') }}>
+                  <div className="flex items-center text-sm"><span className="text-slate-700">{ar}</span><span className={cx('ml-auto text-xs font-semibold', fail ? 'text-red-700' : 'text-emerald-700')}>{fail ? `${fail} to act on` : 'All clear'}</span></div>
+                  <div className="mt-1 h-1.5 rounded-full bg-slate-100"><div className={cx('h-1.5 rounded-full', fail ? 'bg-amber-500' : 'bg-emerald-600')} style={{ width: `${((total - fail) / Math.max(1, total)) * 100}%` }} /></div>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </Card>
       </div>
 
       <section>
         <div className="no-print mb-3 flex flex-wrap items-center gap-2">
           <h2 className="mr-auto text-lg font-semibold text-slate-900">Recommendations</h2>
-          <select aria-label="Show" className="rounded border border-slate-300 bg-white px-2 py-1 text-sm" value={filter} onChange={(e) => setFilter(e.target.value as typeof filter)}>
-            <option value="issues">Action required</option><option value="passed">Compliant</option><option value="all">All checks</option>
+          <div className="flex rounded-lg border border-slate-300 bg-white p-0.5 text-sm">
+            {([['issues', 'Action required'], ['passed', 'Compliant'], ['all', 'All']] as const).map(([k, l]) => (
+              <button key={k} onClick={() => setFilter(k)} className={cx('rounded-md px-3 py-1', filter === k ? 'bg-[#0f2744] text-white' : 'text-slate-600')}>{l}</button>
+            ))}
+          </div>
+          <select aria-label="Area" className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm" value={area} onChange={(e) => setArea(e.target.value as Area | '')}>
+            <option value="">All areas</option>{areas.map((x) => <option key={x}>{x}</option>)}
           </select>
-          <select aria-label="Area" className="rounded border border-slate-300 bg-white px-2 py-1 text-sm" value={area} onChange={(e) => setArea(e.target.value as Area | '')}>
-            <option value="">All areas</option>{areas.map((a) => <option key={a}>{a}</option>)}
-          </select>
-          <button className="rounded border border-slate-300 bg-white px-3 py-1 text-sm" onClick={() => window.print()}>Print report</button>
+          <Button onClick={() => window.print()}>Print report</Button>
         </div>
-        <div className="space-y-2">
-          {shown.length === 0 && <p className="rounded border border-slate-200 bg-white p-4 text-sm text-slate-500">Nothing to show for this filter.</p>}
-          {shown.map((r) => (
-            <article key={r.id} className="rounded-lg border border-slate-200 bg-white p-4">
-              <div className="flex flex-wrap items-start gap-2">
-                <span className={`rounded border px-2 py-0.5 text-xs font-medium ${r.status === 'pass' ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : SEV[r.severity]}`}>
-                  {r.status === 'pass' ? 'Compliant' : SEV_LABEL[r.severity]}
-                </span>
-                <span className="rounded bg-slate-100 px-2 py-0.5 text-xs text-slate-600">{r.area}</span>
-                <h3 className="w-full font-medium text-slate-900 md:w-auto">{r.title}</h3>
-              </div>
-              <p className="mt-2 text-sm text-slate-700">{r.finding}</p>
-              {r.status === 'fail' && <p className="mt-1 text-sm"><span className="font-medium text-slate-900">Action: </span>{r.action}</p>}
-              {r.people && r.people.length > 0 && (
-                <details className="mt-1 text-sm">
-                  <summary className="cursor-pointer text-[#1f3a5f]">{r.people.length} staff member(s)</summary>
-                  <p className="mt-1 text-slate-600">{r.people.join(', ')}</p>
-                </details>
-              )}
-              <div className="mt-2"><SourceLink r={r} /></div>
-            </article>
-          ))}
-        </div>
+        {shown.length === 0 ? <p className="rounded-xl border border-slate-200 bg-white p-6 text-center text-sm text-slate-500">Nothing to show for this filter.</p> : (
+          <div className="grid gap-3 xl:grid-cols-2">{shown.map((r) => <RecCard key={r.id} r={r} />)}</div>
+        )}
       </section>
-
-      <section className="print-break">
-        <div className="mb-3 flex items-center">
-          <h2 className="text-lg font-semibold text-slate-900">Compliance to maintain</h2>
-          <span className="ml-auto text-sm text-slate-500">{done} of {items.length} confirmed</span>
-        </div>
-        <p className="mb-3 text-sm text-slate-500">These cannot be verified from staffing data. The school confirms each item; the date and person are recorded. Click “Save changes” after updating.</p>
-        <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
-          <table className="w-full text-sm">
-            <thead className="border-b border-slate-200 bg-slate-50 text-left text-slate-600">
-              <tr><th className="w-10 p-3">Done</th><th className="p-3">Requirement</th><th className="p-3">Area</th><th className="p-3">Frequency</th><th className="p-3">Confirmed</th><th className="p-3">Note</th></tr>
-            </thead>
-            <tbody>
-              {items.map((i) => {
-                const e = data.compliance?.[i.id]
-                return (
-                  <tr key={i.id} className="border-t border-slate-100 align-top">
-                    <td className="p-3"><input aria-label={`Confirm: ${i.title}`} type="checkbox" checked={!!e?.done} onChange={(ev) => toggle(i.id, ev.target.checked)} /></td>
-                    <td className="p-3"><div>{i.title}</div><div className="mt-1"><SourceLink r={i} /></div></td>
-                    <td className="p-3 text-slate-600">{i.area}</td>
-                    <td className="p-3 text-slate-600">{i.frequency}</td>
-                    <td className="p-3 text-xs text-slate-500">{e?.done ? `${e.date}${e.by ? ' · ' + e.by : ''}` : '—'}</td>
-                    <td className="p-3"><input aria-label="Note" className="w-48 rounded border border-slate-300 px-2 py-1 text-xs" maxLength={200} value={e?.note ?? ''} onChange={(ev) => note(i.id, ev.target.value)} /></td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        </div>
-      </section>
-
-      <p className="text-xs text-slate-500">
-        Recommendations are generated from the data entered and the cited regulations as summarised by the sources linked. They support, and do not replace, the school’s reading of the current official notifications.
-      </p>
+      <p className="text-xs text-slate-500">Recommendations are generated from the school’s data and the cited regulations as summarised by the linked sources. They support, and do not replace, the school’s reading of the current official notifications.</p>
     </div>
   )
 }

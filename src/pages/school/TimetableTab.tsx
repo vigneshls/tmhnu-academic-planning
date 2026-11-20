@@ -44,7 +44,7 @@ export default function TimetableTab({ rules, school, data, sections, onChange }
   return (
     <div className="space-y-4">
       <div className="no-print flex flex-wrap items-center gap-2">
-        <button disabled={busy} onClick={generate} className="rounded bg-[#1f3a5f] px-4 py-2 text-sm font-medium text-white">
+        <button disabled={busy} onClick={generate} className="rounded bg-[#0f2744] px-4 py-2 text-sm font-medium text-white">
           {busy ? 'Generating…' : tt ? 'Re-generate timetable' : 'Generate timetable'}
         </button>
         {tt && (

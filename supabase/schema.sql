@@ -15,6 +15,9 @@ create table if not exists public.profiles (
   role text not null check (role in ('admin', 'principal')),
   school_id uuid references public.schools (id) on delete set null,
   full_name text,
+  email text,
+  active boolean not null default true,
+  created_at timestamptz not null default now(),
   constraint principal_needs_school check (role = 'admin' or school_id is not null)
 );
 
@@ -49,12 +52,12 @@ create table if not exists public.audit_log (
 -- helpers (security definer so policies can read profiles without recursion)
 create or replace function public.is_admin() returns boolean
 language sql stable security definer set search_path = public as $$
-  select exists (select 1 from profiles where user_id = auth.uid() and role = 'admin')
+  select exists (select 1 from profiles where user_id = auth.uid() and role = 'admin' and active)
 $$;
 
 create or replace function public.my_school() returns uuid
 language sql stable security definer set search_path = public as $$
-  select school_id from profiles where user_id = auth.uid()
+  select school_id from profiles where user_id = auth.uid() and active
 $$;
 
 alter table public.schools     enable row level security;
@@ -92,7 +95,15 @@ create policy audit_insert on public.audit_log for insert with check (user_id = 
 create policy audit_read   on public.audit_log for select using (public.is_admin());
 
 -- ---------------------------------------------------------------------------
--- After creating users in Authentication → Users, link them (example):
+-- FIRST ADMINISTRATOR (one time):
+--   1. Authentication → Users → Add user (email + password, tick "Auto Confirm User").
+--   2. Run:
+--      insert into public.profiles (user_id, role, full_name, email)
+--        select id, 'admin', 'Management', email from auth.users where email = 'YOUR-ADMIN-EMAIL';
+-- After that, add schools and create principal logins from the app (Admin → Users).
+-- In Authentication → Providers → Email, turn OFF "Confirm email" so accounts created in the app work immediately.
+--
+-- Older manual examples:
 --
 -- insert into public.schools (name, board) values
 --   ('NS Vidyalaya Matriculation Higher Secondary School', 'MATRIC'),

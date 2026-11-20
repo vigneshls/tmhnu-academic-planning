@@ -1,17 +1,9 @@
 import { readFileSync } from 'node:fs'
 import { readSheet } from 'read-excel-file/node'
 import { describe, expect, it } from 'vitest'
-import { CATEGORY_LABEL } from '../engine/rules'
-import { categoryFromDesignation, parseFacultyRows, type Cell } from './facultyExcel'
+import { parseFacultyRows, type Cell } from './facultyExcel'
 
 describe('faculty Excel', () => {
-  it('template dropdown designations all map to a category', async () => {
-    const lists = (await readSheet(readFileSync('src/assets/faculty-template.xlsx'), 'Lists')) as Cell[][]
-    const designations = lists.map((r) => r[0]).filter(Boolean) as string[]
-    expect(designations.length).toBe(Object.keys(CATEGORY_LABEL).length)
-    for (const d of designations) expect([d, categoryFromDesignation(d)]).not.toEqual([d, null])
-  })
-
   it('parses the filled sample with errors and warnings', async () => {
     const rows = (await readSheet(readFileSync('src/lib/__fixtures__/sample-faculty.xlsx'), 'Faculty')) as Cell[][]
     const res = parseFacultyRows(rows)

@@ -1,120 +1,81 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { useAuth } from '../App'
+import { analyse, type Analysis } from '../data/analyse'
 import { store } from '../data/store'
-import { buildSections, computeDemand, summarize, type SchoolSummary } from '../engine/calc'
-import { recommend, score } from '../engine/recommend'
 import { BOARD_LABEL } from '../engine/rules'
-import type { Board, School } from '../engine/types'
+import type { School, SchoolData } from '../engine/types'
+import { Badge, Card, Empty, Kpi, PageHeader, ScoreRing } from '../ui/kit'
 
-interface Row { school: School; sum: SchoolSummary; sc: ReturnType<typeof score>; staff: number }
+interface Row { school: School; a: Analysis; data: SchoolData }
 
 export default function Dashboard() {
-  const { profile } = useAuth()
   const [rows, setRows] = useState<Row[] | null>(null)
   const [err, setErr] = useState('')
-  const [editing, setEditing] = useState<School | null>(null)
+  useEffect(() => {
+    void (async () => {
+      try {
+        const schools = await store.listSchools()
+        const out: Row[] = []
+        for (const school of schools) {
+          const [rules, data] = await Promise.all([store.getRules(school.board), store.getSchoolData(school.id)])
+          out.push({ school, a: analyse(school, rules, data), data })
+        }
+        setRows(out)
+      } catch (e) { setErr((e as Error).message) }
+    })()
+  }, [])
 
-  const load = async () => {
-    try {
-      const schools = await store.listSchools()
-      const out: Row[] = []
-      for (const school of schools) {
-        const [rules, data] = await Promise.all([store.getRules(school.board), store.getSchoolData(school.id)])
-        const sections = buildSections(rules, data)
-        const demand = computeDemand(rules, sections, data.staff)
-        const sum = summarize(rules, data, sections, demand)
-        const sc = score(recommend({ board: school.board, rules, data, sections, demand, summary: sum }))
-        out.push({ school, sum, sc, staff: data.staff.length })
-      }
-      setRows(out)
-    } catch (e) {
-      setErr((e as Error).message)
-    }
-  }
-  useEffect(() => { void load() }, [])
-
-  if (err) return <p role="alert" className="text-red-600">{err}</p>
-  if (!rows) return <p className="text-slate-500">Loading schools…</p>
-
-  const tot = rows.reduce((a, r) => ({ students: a.students + r.sum.students, sections: a.sections + r.sum.sections, staff: a.staff + r.staff, shortage: a.shortage + r.sum.shortage, critical: a.critical + r.sc.critical }), { students: 0, sections: 0, staff: 0, shortage: 0, critical: 0 })
+  if (err) return <p role="alert" className="text-red-700">{err}</p>
+  if (!rows) return <p className="text-slate-500">Loading…</p>
+  const t = rows.reduce((a, r) => ({ students: a.students + r.a.summary.students, staff: a.staff + r.data.staff.length, shortage: a.shortage + r.a.summary.shortage, critical: a.critical + r.a.score.critical }), { students: 0, staff: 0, shortage: 0, critical: 0 })
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold text-slate-900">All Schools</h1>
-        <p className="text-sm text-slate-500">Strength, staffing and compliance status across the institution.</p>
+    <>
+      <PageHeader eyebrow="Management" title="Institution overview" subtitle={`${rows.length} school${rows.length === 1 ? '' : 's'} · staffing and compliance at a glance`} />
+      <div className="mb-6 grid grid-cols-2 gap-4 md:grid-cols-4">
+        <Kpi label="Students" value={t.students.toLocaleString()} />
+        <Kpi label="Staff on record" value={t.staff} />
+        <Kpi label="Teacher shortage" value={t.shortage} tone={t.shortage ? 'bad' : 'good'} />
+        <Kpi label="Critical issues" value={t.critical} tone={t.critical ? 'bad' : 'good'} />
       </div>
-
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
-        {([['Students', tot.students], ['Sections', tot.sections], ['Faculty on record', tot.staff], ['Teacher shortage', tot.shortage], ['Critical issues', tot.critical]] as const).map(([k, v]) => (
-          <div key={k} className="rounded-lg border border-slate-200 bg-white p-4">
-            <div className="text-xs text-slate-500">{k}</div>
-            <div className={`text-2xl font-semibold ${(k === 'Teacher shortage' || k === 'Critical issues') && v > 0 ? 'text-red-700' : 'text-slate-900'}`}>{v}</div>
-          </div>
-        ))}
-      </div>
-
-      <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
-        <table className="w-full text-sm">
-          <thead className="border-b border-slate-200 bg-slate-50 text-left text-slate-600">
-            <tr>
-              <th className="p-3">School</th><th className="p-3">Board</th><th className="p-3 text-right">Students</th>
-              <th className="p-3 text-right">Sections</th><th className="p-3 text-right">Teachers needed</th><th className="p-3 text-right">Available</th>
-              <th className="p-3 text-right">Shortage</th><th className="p-3 text-right">Critical</th><th className="p-3 text-right">High</th>
-              <th className="p-3 text-right">Checks passed</th><th className="p-3" />
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map(({ school, sum, sc }) => (
-              <tr key={school.id} className="border-t border-slate-100">
-                <td className="p-3 font-medium"><Link className="text-[#1f3a5f] hover:underline" to={`/school/${school.id}`}>{school.name}</Link></td>
-                <td className="p-3">{BOARD_LABEL[school.board]}</td>
-                <td className="p-3 text-right">{sum.students}</td>
-                <td className="p-3 text-right">{sum.sections}</td>
-                <td className="p-3 text-right">{sum.needed}</td>
-                <td className="p-3 text-right">{sum.available}</td>
-                <td className={`p-3 text-right font-semibold ${sum.shortage > 0 ? 'text-red-700' : 'text-emerald-700'}`}>{sum.shortage}</td>
-                <td className={`p-3 text-right ${sc.critical ? 'font-semibold text-red-700' : ''}`}>{sc.critical}</td>
-                <td className={`p-3 text-right ${sc.high ? 'text-amber-700' : ''}`}>{sc.high}</td>
-                <td className="p-3 text-right">{sc.pass}/{sc.total} ({sc.pct}%)</td>
-                <td className="p-3 text-right">{profile?.role === 'admin' && <button className="text-xs text-slate-500 hover:underline" onClick={() => setEditing({ ...school })}>Edit</button>}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-
-      {profile?.role === 'admin' && !editing && (
-        <button className="rounded border border-slate-300 bg-white px-3 py-1.5 text-sm" onClick={() => setEditing({ id: store.mode === 'demo' ? `s-${Date.now().toString(36)}` : crypto.randomUUID(), name: '', board: 'MATRIC' })}>
-          + Add school
-        </button>
+      {rows.length === 0 ? <Empty title="No schools yet"><Link className="text-[#0f2744] underline" to="/admin/schools">Add a school</Link> to begin.</Empty> : (
+        <div className="grid gap-5 xl:grid-cols-2">
+          {rows.map(({ school, a, data }) => {
+            const top = a.recs.filter((r) => r.status === 'fail').slice(0, 3)
+            return (
+              <Card key={school.id}>
+                <div className="flex gap-5">
+                  <ScoreRing pct={a.score.pct} size={96} label="Checks passed" />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Badge tone="info">{BOARD_LABEL[school.board]}</Badge>
+                      {data.source === 'sample' && <Badge tone="high">Sample data</Badge>}
+                      {data.importedAt && <span className="text-xs text-slate-500">Imported {new Date(data.importedAt).toLocaleDateString()}</span>}
+                    </div>
+                    <Link to={`/school/${school.id}`} className="mt-1 block text-lg font-semibold leading-snug text-slate-900 hover:underline">{school.name}</Link>
+                    <div className="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-sm text-slate-600">
+                      <span><b className="text-slate-900">{a.summary.students}</b> students</span>
+                      <span><b className="text-slate-900">{a.summary.sections}</b> sections</span>
+                      <span><b className="text-slate-900">{a.summary.available}</b>/{a.summary.needed} teachers</span>
+                      <span className={a.score.critical ? 'text-red-700' : ''}><b>{a.score.critical}</b> critical</span>
+                      <span className={a.score.high ? 'text-amber-700' : ''}><b>{a.score.high}</b> high</span>
+                    </div>
+                  </div>
+                </div>
+                {top.length > 0 && (
+                  <ul className="mt-4 space-y-1.5 border-t border-slate-100 pt-4 text-sm">
+                    {top.map((r) => <li key={r.id} className="flex gap-2"><Badge tone={r.severity}>{r.severity === 'low' ? 'Advisory' : r.severity[0].toUpperCase() + r.severity.slice(1)}</Badge><span className="truncate text-slate-700">{r.title}</span></li>)}
+                  </ul>
+                )}
+                <div className="mt-4 flex gap-2 text-sm">
+                  <Link to={`/school/${school.id}`} className="rounded-lg bg-[#0f2744] px-3 py-1.5 font-medium text-white">Open dashboard</Link>
+                  <Link to={`/admin/import?school=${school.id}`} className="rounded-lg border border-slate-300 px-3 py-1.5 text-slate-700 hover:bg-slate-50">Import data</Link>
+                </div>
+              </Card>
+            )
+          })}
+        </div>
       )}
-
-      {editing && (
-        <form
-          className="max-w-xl space-y-3 rounded-lg border border-slate-200 bg-white p-4"
-          onSubmit={async (e) => {
-            e.preventDefault()
-            if (!editing.name.trim()) return
-            try { await store.saveSchool({ ...editing, name: editing.name.trim() }); setEditing(null); await load() } catch (er) { setErr((er as Error).message) }
-          }}
-        >
-          <h2 className="font-semibold">School details</h2>
-          <label className="block text-sm">Name
-            <input required maxLength={120} className="mt-1 w-full rounded border border-slate-300 px-2 py-1" value={editing.name} onChange={(e) => setEditing({ ...editing, name: e.target.value })} />
-          </label>
-          <label className="block text-sm">Board
-            <select className="mt-1 w-full rounded border border-slate-300 px-2 py-1" value={editing.board} onChange={(e) => setEditing({ ...editing, board: e.target.value as Board })}>
-              <option value="MATRIC">Matriculation (TN)</option><option value="CBSE">CBSE</option>
-            </select>
-          </label>
-          <div className="flex gap-2">
-            <button className="rounded bg-[#1f3a5f] px-3 py-1.5 text-sm text-white">Save</button>
-            <button type="button" className="rounded border border-slate-300 px-3 py-1.5 text-sm" onClick={() => setEditing(null)}>Cancel</button>
-          </div>
-        </form>
-      )}
-    </div>
+    </>
   )
 }

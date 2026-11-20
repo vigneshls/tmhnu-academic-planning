@@ -61,7 +61,7 @@ export default function RequirementTab({ rules, sections, demand, summary }: { r
             <tbody>
               {cats.map((c) => (
                 <Fragment key={c}>
-                  <tr className="border-t bg-slate-100"><td colSpan={6} className="p-2 font-semibold text-[#1f3a5f]">{CATEGORY_LABEL[c]}</td></tr>
+                  <tr className="border-t bg-slate-100"><td colSpan={6} className="p-2 font-semibold text-[#0f2744]">{CATEGORY_LABEL[c]}</td></tr>
                   {demand.filter((d) => d.category === c).map((d) => (
                     <tr key={d.key} className="border-t">
                       <td className="p-2">{d.subject}</td>

@@ -43,7 +43,7 @@ export default function Rules() {
         <div className="ml-auto flex items-center gap-2">
           {msg && <span className="text-sm text-emerald-700">{msg}</span>}
           <button className="rounded border px-3 py-2 text-sm" onClick={() => { if (confirm('Reset this board to default rules?')) { setR(defaultRuleSet(board)); setDirty(true) } }}>Reset to defaults</button>
-          <button disabled={!dirty} className={`rounded px-4 py-2 text-sm font-medium ${dirty ? 'bg-[#1f3a5f] text-white' : 'bg-slate-200 text-slate-500'}`}
+          <button disabled={!dirty} className={`rounded px-4 py-2 text-sm font-medium ${dirty ? 'bg-[#0f2744] text-white' : 'bg-slate-200 text-slate-500'}`}
             onClick={async () => { try { await store.saveRules(r); setDirty(false); setMsg('Saved ✓') } catch (e) { setMsg((e as Error).message) } }}>
             Save rules
           </button>

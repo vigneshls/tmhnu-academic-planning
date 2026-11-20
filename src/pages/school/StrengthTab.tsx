@@ -28,7 +28,7 @@ function Chips({ secs }: { secs: Section[] }) {
 
 function Card({ title, note, children }: { title: string; note: string; children: React.ReactNode }) {
   return (
-    <section className="rounded-lg border border-slate-200 bg-white">
+    <section className="rounded-xl border border-slate-200/80 bg-white">
       <div className="border-b border-slate-200 px-4 py-3">
         <h3 className="font-semibold text-slate-900">{title}</h3>
         <p className="text-sm text-slate-500">{note}</p>
@@ -54,7 +54,7 @@ export default function StrengthTab({ rules, data, sections, onChange }: { rules
 
   return (
     <div className="space-y-5">
-      <div className="flex flex-wrap items-start gap-4 rounded-lg border border-slate-200 bg-white p-4">
+      <div className="flex flex-wrap items-start gap-4 rounded-xl border border-slate-200/80 bg-white p-4">
         <label className="flex items-center gap-2 font-medium text-slate-900">
           <input type="checkbox" className="h-4 w-4" checked={split} onChange={(e) => onChange({ ...data, genderSeparate: e.target.checked })} />
           Separate boys and girls sections from Class 6

@@ -108,9 +108,33 @@ export interface Staff {
 
 export interface ComplianceEntry {
   done: boolean
+  /** YES = in place, NO = not in place, NA = not applicable; blank = not yet confirmed */
+  status?: 'YES' | 'NO' | 'NA'
+  validUntil?: string
   date?: string
   note?: string
   by?: string
+}
+
+export interface SchoolProfile {
+  academicYear?: string
+  udise?: string
+  recognitionNo?: string
+  recognitionValidUntil?: string
+  minority?: boolean
+  workingDaysYear?: number
+  periodMinutes?: number
+  startTime?: string
+  endTime?: string
+}
+
+/** Per-school changes to the board rules, normally loaded from the school workbook */
+export interface RuleOverrides {
+  daysPerWeek?: number
+  periodsPerDay?: number
+  lunchAfterPeriod?: number
+  subjectsByStandard?: Record<string, SubjectAlloc[]>
+  hssGroups?: HssGroup[]
 }
 
 export interface SchoolData {
@@ -126,6 +150,13 @@ export interface SchoolData {
   compliance?: Record<string, ComplianceEntry>
   /** When the faculty list was last uploaded */
   staffUpdatedAt?: string
+  profile?: SchoolProfile
+  /** Children with special needs per standard (11/12 summed across groups) */
+  cwsn?: Record<string, number>
+  overrides?: RuleOverrides
+  /** 'sample' = demo figures; 'import' = loaded from the school's workbook */
+  source?: 'sample' | 'import' | 'manual'
+  importedAt?: string
 }
 
 export interface School {

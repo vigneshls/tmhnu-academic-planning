@@ -1,89 +1,86 @@
 # TMHNU Schools — Academic Planning
 
-**Live app:** https://vigneshls.github.io/tmhnu-staffing/ (after the first deploy; see below)
+**Live:** https://vigneshls.github.io/tmhnu-academic-planning/
 
-This app plans staffing and timetables and checks compliance for:
+Each school fills **one Excel workbook**. Management uploads it, and the system automatically calculates:
 
-- NS Vidyalaya Matriculation Higher Secondary School
-- TMHNU Matriculation Higher Secondary School, Muthuthevanpatti
-- NS Matriculation Higher Secondary School, Vadapudupatti
+- sections
+- subject-wise teacher requirement
+- a clash-free timetable
+- **recommendations** ranked by severity, each linked to the CBSE, RTE or Tamil Nadu rule behind it
 
-Two boards are supported: **CBSE** and **Matriculation (Tamil Nadu)**. Each school's board can be changed by management.
+The app currently holds **NS Matriculation Higher Secondary School, Vadapudupatti**. More schools can be added from the admin panel.
+
+## Workflow
+
+1. **Admin → Data Import → "Blank workbook for this school"**. Send the downloaded file to the school.
+2. The school fills the five sheets. The drop-down lists and value checks are built into the file.
+
+   | Sheet | What it collects |
+   |---|---|
+   | School Profile | Name, board, UDISE+, recognition number and validity, minority status, days per week, periods per day, period length, lunch slot, working days in the year |
+   | Students | Boys, girls and CWSN (children with special needs) per class; Classes 11–12 per group |
+   | Faculty | One row per staff member: designation, subjects, qualification, professional qualification, TET, appointment, joining date, experience, training (CPD) hours |
+   | Subject Periods | Periods per week per subject. Pre-filled with the board model, to be edited to match the school |
+   | Compliance | Yes / No / Not applicable for each regulatory item, with expiry dates |
+
+3. **Upload** the filled file. Every sheet, row and column is validated, and the page shows a before/after comparison. Then click **Apply import**.
+4. The school dashboard updates immediately. Principals see their own school only.
+
+The workbook deliberately collects no phone, Aadhaar, bank, salary or student-name data.
 
 ## Roles
 
 | | Management | Principal |
 |---|---|---|
-| Schools | All | Own school only |
-| Faculty list | Uploads the Excel file and replaces the list | Views the full list (read-only) |
-| Student strength, timetable, compliance checklist | Edit | Edit |
-| Board rules (caps, workload, subject periods) | Edit | — |
-
-In live mode these permissions are enforced by Postgres Row Level Security. The faculty list is stored in a separate admin-only table.
-
-## Faculty upload (Excel)
-
-1. Go to Faculty → **Download template**. The template has drop-down lists for Designation, Qualification, Professional Qualification, TET, Appointment and Subject, plus an Instructions sheet.
-2. The school fills one row per staff member.
-3. Management uploads the file. Each row is checked:
-   - **Rejected:** missing name, unknown designation, or duplicate Employee ID.
-   - **Warning:** an unrecognised value, a bad date, or a number out of range.
-4. After reviewing, confirm **Replace faculty list**.
-
-The template deliberately collects no phone, Aadhaar, bank or salary data.
+| Schools, logins, data import, board rules, activity log | ✓ | — |
+| School dashboard, recommendations, faculty list | All schools | Own school, read-only faculty list |
+| Student numbers, timetable generation, compliance status | ✓ | ✓ |
 
 ## Recommendation engine
 
-`src/engine/recommend.ts` checks the school's data against cited rules. Every recommendation shows its source.
+See `src/engine/recommend.ts` and `src/engine/sources.ts`. Every check shows the source it is based on.
 
-| Area | CBSE | Matriculation |
-|---|---|---|
-| Class size | ≤ 40 per section (Bye-Laws cl. 4.8); never > 45 (Circular 11/2025) | Institution cap (TN norms 30/35/40) |
-| Ratios | PTR ≤ 30:1; 1.5 teachers per section (cl. 5.4) | — |
-| RTE (Classes 1–8) | PTR 30:1 (Classes 1–5); subject teachers for Classes 6–8; Art, PE and Work Education instructors when Classes 6–8 have more than 100 students; head teacher | same |
-| Student support | Full-time Special Educator (cl. 2.4.11); 1 counsellor per 500 students and a Career Counsellor (cl. 2.4.12, amended Jan 2026); PE teachers at 1:500 per stage | Counsellor on the Anti-bullying Committee (Rule 41) |
-| Qualifications | D.El.Ed for Classes 1–5 (Supreme Court, 2023); degree + B.Ed (TGT); PG + B.Ed (PGT); TET for Classes 1–8; regular appointment | same (TN Rules 2023, Annexure IV-A) |
-| Training | 50 hours a year, 25 of them via CBSE/Government (TRG-2/3, 2025) | 50 hours a year, as an advisory (NEP 2020) |
-| Curriculum | Tamil in Classes 1–10 (TN Tamil Learning Act 2006); three languages from Class 6 (R3, 2026-27) | Tamil in Classes 1–10 |
-| Planning | Subject-wise shortage or surplus, single-teacher subjects, under-2-year-only subjects, vacancies, workload buffer, rule conflicts | same |
+- **Teacher strength:** subject-wise shortage and surplus; single-teacher subjects; RTE subject teachers and instructors; head of institution.
+- **Class size and ratios:**
+  - CBSE: 40 per section, never more than 45, PTR 30:1, 1.5 teachers per section.
+  - RTE: 30:1 for Classes 1–5.
+  - Matriculation: the institution's section caps.
+- **Student support:**
+  - CBSE: special educator, counsellor at 1:500, career counsellor, PE teachers.
+  - Matriculation: a counsellor on the anti-bullying committee.
+  - Both: provision for children with special needs (CWSN).
+- **Qualifications:** D.El.Ed for Classes 1–5; degree + B.Ed (TGT); PG + B.Ed (PGT); TET for Classes 1–8; regular appointment.
+- **Curriculum:**
+  - Tamil in Classes 1–10.
+  - CBSE: three languages (R3) from Class 6.
+  - RTE minimum working days and instructional hours.
+- **Compliance and records:**
+  - Recognition validity, with an alert 3 months ahead.
+  - Items marked "No", and certificates that have expired or expire within 60 days.
+- **Professional development:** 50 hours of CPD per teacher; mentoring where a subject is taught only by teachers with less than 2 years' experience.
+- **Timetable and workload:** vacancies, unscheduled periods, the 5-period buffer, and conflicts between rules.
 
-There is also a **compliance checklist** of items that can't be verified from staffing data, such as ECS salary, the website disclosure, recognition renewal, fire NOC, the school committee, bus safety and registers. Schools tick these off, and the date and person are recorded.
+## Modes
 
-Notes on the sources:
-- Some sources are news summaries of circulars; the app labels these.
-- The 1:500 PE-teacher ratio comes from a 2015-16 amendment and should be checked against the current clause 2.4.10.
-- The recommendations support the school's own reading of the current official notifications. They do not replace it.
+- **Demo mode** (default, with no database): sample data. Logins are stored in the browser with PBKDF2-hashed passwords. Demo accounts are shown on the sign-in page.
+- **Live mode:** Supabase (Postgres + Auth + Row Level Security). Set up:
+  1. Create a Supabase project and run [`supabase/schema.sql`](supabase/schema.sql).
+  2. In Authentication → Providers → Email, turn **off** "Confirm email".
+  3. Create the first administrator by following the comments in `schema.sql`.
+  4. In GitHub → Settings → Secrets and variables → Actions → **Variables**, add `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`. Re-run the deploy.
+  5. From then on, create every login from **Admin → Users & Logins**.
 
-## Deploy (GitHub Pages)
-
-```bash
-gh repo create vigneshls/tmhnu-staffing --public --source=. --push
-gh api -X POST repos/vigneshls/tmhnu-staffing/pages -f build_type=workflow
-```
-Or set it manually: Repo → Settings → Pages → Source: **GitHub Actions**. Every push to `main` then runs the tests, builds and publishes the site.
-
-Without a database the site runs in **demo mode**: sample figures and fictional staff, stored per browser.
-
-## Real logins (Supabase, free tier)
-
-1. Create a Supabase project and run [`supabase/schema.sql`](supabase/schema.sql).
-2. Create the management user and the 3 principals in Authentication → Users. Then insert the schools and profiles; there are SQL examples at the end of `schema.sql`.
-3. In GitHub, go to Settings → Secrets and variables → Actions → **Variables** and add `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`. Re-run the deploy workflow.
-
-Use only the anon key. RLS protects the data. Never put the service_role key in the app. Free Supabase projects pause when inactive.
-
-## Run locally / offline
+## Development
 
 ```bash
 npm ci
 npm run dev                # http://localhost:5173
-npm test                   # 17 tests: engine, timetable, recommendations, Excel parsing
-npm run build:standalone   # dist-standalone/index.html: one file, opens by double-click (demo mode)
-python3 scripts/make_template.py   # regenerate the Excel template
+npm test                   # engine, timetable, recommendations, workbook round-trip
+npm run build
+npm run build:standalone   # single offline HTML file (demo mode)
 ```
 
-## Stack
+Every push to `main` deploys to GitHub Pages through `.github/workflows/deploy.yml`.
 
-React 19, TypeScript, Vite, Tailwind CSS, Supabase (Postgres, Auth, RLS), read-excel-file and Vitest.
-
-MIT License.
+React 19 · TypeScript · Vite · Tailwind CSS · Supabase · ExcelJS (template generation, loaded on demand) · read-excel-file · Vitest. MIT License.

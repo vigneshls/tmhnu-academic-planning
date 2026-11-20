@@ -65,4 +65,20 @@ describe('recommendations', () => {
     expect(checklist('MATRIC').some((c) => c.id === 'tn-recognition')).toBe(true)
     for (const r of recs) expect(r.source.url).toBeTruthy()
   })
+
+  it('profile and compliance inputs drive checks', () => {
+    const soon = new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10)
+    const past = new Date(Date.now() - 5 * 86400000).toISOString().slice(0, 10)
+    const { recs } = run('MATRIC', (d) => {
+      d.profile = { recognitionValidUntil: soon, workingDaysYear: 210, periodMinutes: 40 }
+      d.compliance = { 'tn-bus': { done: false, status: 'NO' }, 'tn-building': { done: true, status: 'YES', validUntil: past } }
+      d.cwsn = { '3': 2 }
+    })
+    expect(get(recs, 'recognition')).toMatchObject({ status: 'fail', severity: 'high' })
+    // 210 days < 220 for Classes 6–8
+    expect(get(recs, 'rte-days')?.status).toBe('fail')
+    expect(get(recs, 'cmp-tn-bus')).toMatchObject({ status: 'fail', severity: 'critical' })
+    expect(get(recs, 'cmp-tn-building')).toMatchObject({ severity: 'critical' })
+    expect(get(recs, 'cwsn')?.status).toBe('fail')
+  })
 })
