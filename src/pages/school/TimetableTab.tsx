@@ -88,7 +88,7 @@ function Status({ tt, rules, stale }: { tt: TimetableResult; rules: RuleSet; sta
         {violations.length ? `✗ ${violations.length} rule violation(s): ${violations.slice(0, 3).join('; ')}` : `✓ All hard rules met (no clashes, max ${rules.maxConsecutive} continuous periods, daily/weekly limits)`}
       </p>
       <p className={missing ? 'text-red-600' : 'text-emerald-700'}>
-        {missing ? `✗ ${missing} period(s) could not be placed: ${tt.unplaced.slice(0, 5).map((u) => { const l = tt.lessons.find((x) => x.id === u.lessonId); const sec = tt.sections.find((x) => x.id === l?.sectionId); const t = tt.teachers.find((x) => x.id === l?.teacherId); return `${sec?.label ?? ''} ${l?.subject ?? ''}${t ? ` (${t.name})` : ''} ×${u.remaining}` }).join(', ')}. The teacher has no free period left that matches the section; try Generate again or move one period to another teacher.`` : '✓ Every subject got its full weekly periods'}
+        {missing ? `✗ ${missing} period(s) could not be placed: ${tt.unplaced.slice(0, 5).map((u) => { const l = tt.lessons.find((x) => x.id === u.lessonId); const sec = tt.sections.find((x) => x.id === l?.sectionId); const t = tt.teachers.find((x) => x.id === l?.teacherId); return `${sec?.label ?? ''} ${l?.subject ?? ''}${t ? ` (${t.name})` : ''} ×${u.remaining}` }).join(', ')}. The teacher has no free period left that matches the section; try Generate again or move one period to another teacher.` : '✓ Every subject got its full weekly periods'}
       </p>
       {vac.length > 0 && <p className="text-amber-700">⚠ {vac.length} vacancy placeholder(s): {vac.map((v) => v.name).join(', ')}</p>}
       <p className="text-xs text-slate-500">Generated {new Date(tt.generatedAt).toLocaleString()} · placement score {tt.softScore}</p>
