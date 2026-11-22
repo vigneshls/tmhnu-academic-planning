@@ -57,14 +57,17 @@ export interface FamilyRow {
   notes: string[]
 }
 export interface ClassTeacherRow { level: 'Pre-primary' | 'Classes 1–5'; sections: number; atCap: number; required: number; available: number; names: string[]; gap: number }
-export interface Staffing { load: number; classTeachers: ClassTeacherRow[]; families: FamilyRow[]; other: { subject: string; periods: number }[]; deficitPosts: number; excessPosts: number; requiredPosts: number }
+export interface Staffing { load: number; pgtLoad: number; classTeachers: ClassTeacherRow[]; families: FamilyRow[]; other: { subject: string; periods: number }[]; deficitPosts: number; excessPosts: number; requiredPosts: number }
 
 export function subjectStaffing(rules: RuleSet, data: SchoolData, sections: Section[]): Staffing | null {
   const allocs = data.allocations
   if (!allocs?.length) return null
   const byId = new Map(data.staff.map((s) => [s.id, s]))
-  const load = effectiveLimits(rules, rules.workload.TGT).perWeek || 30
-  const headFte = Math.min(1, (rules.workload.ACAD_HEAD.max || 20) / load)
+  // Planning load = policy target, never above what the week structure allows
+  const tgtLoad = effectiveLimits(rules, rules.workload.TGT).target || 30
+  const pgtLoad = effectiveLimits(rules, rules.workload.PGT).target || 30
+  const load = tgtLoad
+  const headFte = Math.min(1, (rules.workload.ACAD_HEAD.max || 20) / tgtLoad)
 
   // ---- class teachers
   const secCount = (lv: 'PRE' | '1-5') => sections.filter((s) => levelOf(s.standard) === lv).length
@@ -129,7 +132,7 @@ export function subjectStaffing(rules: RuleSet, data: SchoolData, sections: Sect
   let deficitPosts = 0, excessPosts = 0, requiredPosts = 0
   for (const r of fam.values()) {
     const p = r.periods['1-5'] + r.periods['6-10'] + r.periods['11-12']
-    r.required = Math.round((p / load) * 10) / 10
+    r.required = Math.round(((r.periods['1-5'] + r.periods['6-10']) / tgtLoad + r.periods['11-12'] / pgtLoad) * 10) / 10
     r.available = Math.round(r.available * 10) / 10
     r.gap = Math.round((r.available - r.required) * 10) / 10
     r.status = r.gap <= -0.5 ? 'deficit' : r.gap >= 1 ? 'excess' : 'ok'
@@ -146,5 +149,5 @@ export function subjectStaffing(rules: RuleSet, data: SchoolData, sections: Sect
   for (const c of classTeachers) { if (c.gap < 0) deficitPosts += -c.gap; if (c.gap > 0) excessPosts += c.gap; requiredPosts += c.required }
 
   const families = [...fam.values()].sort((a, b) => a.gap - b.gap || a.label.localeCompare(b.label))
-  return { load, classTeachers, families, other: [...other].map(([subject, periods]) => ({ subject, periods })).sort((a, b) => b.periods - a.periods), deficitPosts, excessPosts, requiredPosts }
+  return { load, pgtLoad, classTeachers, families, other: [...other].map(([subject, periods]) => ({ subject, periods })).sort((a, b) => b.periods - a.periods), deficitPosts, excessPosts, requiredPosts }
 }

@@ -34,7 +34,7 @@ function staffingRecs(s: NonNullable<ReturnType<typeof subjectStaffing>>): Recom
   const out: Recommendation[] = [{
     id: 'staff-deficit', status: def.length || ctDef.length ? 'fail' : 'pass', severity: 'high', area: 'Teacher strength',
     title: 'Enough teachers in every subject',
-    finding: def.length || ctDef.length ? `Short in ${[...ctDef.map((c) => `${c.level} class teachers`), ...def.map((f) => f.label)].join(', ')} (load ${s.load} periods/week per teacher).` : 'Every subject has enough teachers for its periods.',
+    finding: def.length || ctDef.length ? `Short in ${[...ctDef.map((c) => `${c.level} class teachers`), ...def.map((f) => f.label)].join(', ')} (planning load ${s.load} periods/week for TGT, ${s.pgtLoad} for PGT).` : 'Every subject has enough teachers for its periods.',
     action: 'Recruit for these subjects, or move teachers from subjects in excess where they are qualified.',
     people: def.length || ctDef.length ? [...ctDef.map((c) => `${c.level}: need ${c.required}, have ${c.available}`), ...def.map((f) => `${f.label}: need ${f.required}, have ${f.available} (${f.gap})`)] : undefined,
     source: SOURCES.PLANNING,

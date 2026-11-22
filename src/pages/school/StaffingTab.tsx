@@ -16,7 +16,7 @@ export default function StaffingTab({ rules, staffing: s, summary }: { rules: Ru
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
-        <Kpi label="Teachers required" value={s.requiredPosts} hint={`at ${s.load} teaching periods / week each`} />
+        <Kpi label="Teachers required" value={s.requiredPosts} hint={`at ${s.load} periods/week (TGT), ${s.pgtLoad} (PGT)`} />
         <Kpi label="Teaching staff" value={summary.available} />
         <Kpi label="Deficit (posts)" value={s.deficitPosts} tone={s.deficitPosts ? 'bad' : 'good'} />
         <Kpi label="Excess (posts)" value={s.excessPosts} tone={s.excessPosts ? 'warn' : 'default'} />
@@ -45,7 +45,7 @@ export default function StaffingTab({ rules, staffing: s, summary }: { rules: Ru
 
       <Card
         title="Subject teachers — Classes 6 to 12"
-        subtitle={`Required = periods in the Subject Periods sheet ÷ ${s.load} periods per teacher. Coordinators count as part-time (max ${rules.workload.ACAD_HEAD.max}). Click a row for details.`}
+        subtitle={`Required = periods in the Subject Periods sheet ÷ policy target load (Classes 1–10: ${s.load}, Classes 11–12: ${s.pgtLoad} periods per teacher). Coordinators count as part-time (max ${rules.workload.ACAD_HEAD.max}). Click a row for details.`}
         actions={<Button onClick={() => downloadCsv('subject-staffing.csv', [['Subject', 'Periods 1-5', 'Periods 6-10', 'Periods 11-12', 'Required', 'Available', 'Gap', 'Status', 'Teachers', 'Notes'], ...s.families.map((f) => [f.label, f.periods['1-5'], f.periods['6-10'], f.periods['11-12'], f.required, f.available, f.gap, WORD[f.status], f.teachers.map((t) => t.name).join('; '), f.notes.join(' ')])])}>Export CSV</Button>}
         pad={false}
       >
