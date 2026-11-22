@@ -65,7 +65,7 @@ export const PREF_TIME = ['First 3 periods', 'After lunch', 'Last period', 'Any'
 export const COMPLIANCE_STATUS = ['Yes', 'No', 'Not applicable'] as const
 
 export const STUDENT_HEADERS = ['Class', 'Group (Class 11–12 only)', 'Boys', 'Girls', 'Children with Special Needs (CWSN)'] as const
-export const SUBJECT_HEADERS = ['Class', 'Group (Class 11–12 only)', 'Subject', 'Periods per Week', 'Handled By', 'Preferred Time'] as const
+export const SUBJECT_HEADERS = ['Class', 'Group (Class 11–12 only)', 'Section', 'Subject', 'Periods per Week', 'Teacher Name(s)', 'Preferred Time'] as const
 export const COMPLIANCE_HEADERS = ['ID', 'Area', 'Requirement', 'Status', 'Valid Until (if any)', 'Remarks', 'Basis'] as const
 
 export const slug = (s: string) => s.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) || 'group'

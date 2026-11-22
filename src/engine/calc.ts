@@ -1,5 +1,5 @@
 import { categoryForStage, effectiveLimits, isClassTeacherStage, stageOf } from './rules'
-import type { Category, DemandRow, RuleSet, SchoolData, Section, Stage, Staff } from './types'
+import type { Allocation, Category, DemandRow, RuleSet, SchoolData, Section, Stage, Staff } from './types'
 import { HSS_STANDARDS, STANDARDS, isTeachingCategory } from './types'
 
 const LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
@@ -16,6 +16,12 @@ function split(n: number, k: number): number[] {
 const norm = (x: string) => x.trim().toLowerCase()
 
 export function buildSections(rules: RuleSet, data: SchoolData): Section[] {
+  if (data.allocations?.length) return sectionsFromAllocations(rules, data)
+  return normSections(rules, data)
+}
+
+/** Sections as the board norms would form them (section cap) */
+export function normSections(rules: RuleSet, data: SchoolData): Section[] {
   const out: Section[] = []
   const push = (std: string, stage: Stage, subjects: Section['subjects'], counts: { boys: number; girls: number }, groupId?: string, groupName?: string) => {
     const cap = rules.sectionCap[stage]
@@ -169,10 +175,16 @@ export function summarize(rules: RuleSet, data: SchoolData, sections: Section[],
   for (const s of sections) per.get(s.standard)!.sections += 1
   for (const [std, p] of per) if (Number(std) >= 6) { boys += p.boys; girls += p.girls }
 
-  const needed = demand.reduce((a, d) => a + d.needed, 0)
   const teaching = data.staff.filter((s) => s.category !== 'PRINCIPAL' && isTeachingCategory(s.category))
+  let needed = demand.reduce((a, d) => a + d.needed, 0)
+  if (data.allocations?.length) {
+    // With the school's own allocation: teachers needed = weekly periods ÷ planning load
+    const periods = sections.reduce((a, s) => a + s.subjects.filter((x) => !x.noTeacher).reduce((b, x) => b + x.periods, 0), 0)
+    const target = effectiveLimits(rules, rules.workload.TGT).target || 30
+    needed = Math.ceil(periods / target)
+  }
   const available = teaching.length
-  const shortage = demand.reduce((a, d) => a + Math.max(0, -d.gap), 0)
+  const shortage = data.allocations?.length ? Math.max(0, needed - teaching.length) : demand.reduce((a, d) => a + Math.max(0, -d.gap), 0)
   const ptr = available > 0 ? Math.round((students / available) * 10) / 10 : null
 
   const checks: SchoolSummary['checks'] = []
@@ -198,4 +210,47 @@ export function summarize(rules: RuleSet, data: SchoolData, sections: Section[],
     students, boys6to12: boys, girls6to12: girls, sections: sections.length, needed, available, shortage, ptr, checks,
     perStandard: [...per].map(([standard, p]) => ({ standard, ...p })),
   }
+}
+
+/** Sections exactly as the school runs them (from the Subject Periods allocation) */
+function sectionsFromAllocations(rules: RuleSet, data: SchoolData): Section[] {
+  const allocs = data.allocations!
+  const covered = new Set(allocs.map((a) => `${a.standard}|${a.groupId ?? ''}`))
+  // classes with students but no allocation rows still get norm-based sections
+  // HSS student groups without allocation rows are reported as a data issue, not turned into empty sections
+  const fallback = normSections(rules, data).filter((s) => !covered.has(`${s.standard}|${s.groupId ?? ''}`) && s.stage !== 'HSS')
+  const bySec = new Map<string, Allocation[]>()
+  for (const a of allocs) {
+    const key = `${a.standard}|${a.groupId ?? ''}|${a.section}`
+    bySec.set(key, [...(bySec.get(key) ?? []), a])
+  }
+  const out: Section[] = []
+  const classSecs = new Map<string, string[]>()
+  for (const key of bySec.keys()) {
+    const ck = key.split('|').slice(0, 2).join('|')
+    classSecs.set(ck, [...(classSecs.get(ck) ?? []), key])
+  }
+  for (const [ck, keys] of classSecs) {
+    const [std, gid] = ck.split('|')
+    const c = gid ? data.hss[std]?.[gid] : data.strength[std]
+    const total = c ? c.boys + c.girls : 0
+    const sizes = split(total, keys.length)
+    keys.sort().forEach((key, i) => {
+      const list = bySec.get(key)!
+      const a0 = list[0]
+      out.push({
+        id: `${std}-${gid || 'X'}-${a0.section}`,
+        standard: std,
+        stage: stageOf(std),
+        groupId: gid || undefined,
+        gender: 'C',
+        label: `${std}${a0.groupName ? ' ' + a0.groupName : ''} ${a0.section}`,
+        strength: sizes[i] ?? 0,
+        subjects: list.map((a) => ({ subject: a.subject, periods: a.periods, pref: a.pref, ...(a.mode === 'shared' ? { flex: true } : {}) })),
+        allocs: list,
+      })
+    })
+  }
+  const order = (s: Section) => STANDARDS.indexOf(s.standard as (typeof STANDARDS)[number]) * 1000 + (s.groupId ? s.groupId.charCodeAt(0) : 0)
+  return [...out, ...fallback].sort((a, b) => order(a) - order(b) || a.label.localeCompare(b.label))
 }

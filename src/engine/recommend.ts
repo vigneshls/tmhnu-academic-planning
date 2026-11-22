@@ -1,6 +1,7 @@
 import { CLASS_TEACHER, type SchoolSummary } from './calc'
 import { CATEGORY_LABEL, effectiveLimits, stageOf } from './rules'
 import { SOURCES, type Source } from './sources'
+import { allocationChecks } from './allocationChecks'
 import type { Board, Category, DemandRow, RuleSet, SchoolData, Section, Staff } from './types'
 import { isTeachingCategory } from './types'
 
@@ -68,6 +69,7 @@ export function recommend(ctx: Ctx): Recommendation[] {
   const total = summary.students
   const names = (list: Staff[]) => list.map((s) => s.name || s.employeeId || '(unnamed)')
   const isCBSE = board === 'CBSE'
+  const hasAlloc = !!data.allocations?.length
 
   if (staff.length === 0) {
     add({
@@ -80,7 +82,7 @@ export function recommend(ctx: Ctx): Recommendation[] {
   }
 
   // ------------------------------------------------------------ teacher strength (subject-wise demand)
-  const short = demand.filter((d) => d.gap < 0)
+  const short = hasAlloc ? [] : demand.filter((d) => d.gap < 0)
   for (const d of short) {
     add({
       id: `short-${d.key}`, status: 'fail', severity: d.subject === CLASS_TEACHER ? 'critical' : 'critical', area: 'Teacher strength',
@@ -90,9 +92,9 @@ export function recommend(ctx: Ctx): Recommendation[] {
       source: SOURCES.TMHNU_POLICY,
     })
   }
-  if (staff.length > 0 && short.length === 0 && demand.length > 0)
+  if (!hasAlloc && staff.length > 0 && short.length === 0 && demand.length > 0)
     add({ id: 'short-none', status: 'pass', severity: 'critical', area: 'Teacher strength', title: 'Subject-wise teacher strength is sufficient', finding: 'Every subject has enough teachers for the current sections.', action: 'Re-check after admissions close each year.', source: SOURCES.TMHNU_POLICY })
-  const surplus = demand.filter((d) => d.gap > 0 && d.subject !== CLASS_TEACHER)
+  const surplus = hasAlloc ? [] : demand.filter((d) => d.gap > 0 && d.subject !== CLASS_TEACHER)
   if (surplus.length)
     add({
       id: 'surplus', status: 'fail', severity: 'low', area: 'Teacher strength',
@@ -101,7 +103,7 @@ export function recommend(ctx: Ctx): Recommendation[] {
       action: 'Use surplus periods for remedial classes and substitution, or redeploy to a sister school with a shortage in the same subject.',
       source: SOURCES.TMHNU_POLICY,
     })
-  const single = demand.filter((d) => d.subject !== CLASS_TEACHER && !d.subject.startsWith('Shared') && d.available === 1 && d.needed >= 1)
+  const single = hasAlloc ? [] : demand.filter((d) => d.subject !== CLASS_TEACHER && !d.subject.startsWith('Shared') && d.available === 1 && d.needed >= 1)
   if (single.length)
     add({
       id: 'single-point', status: 'fail', severity: 'medium', area: 'Teacher strength',
@@ -157,14 +159,17 @@ export function recommend(ctx: Ctx): Recommendation[] {
     })
   }
   // RTE (both boards, Classes 1–8)
-  const sgt = byCat('SGT').length
+  // With the school's allocation, count every teacher's share of Classes 1–5 periods (full-time equivalents)
+  const primPeriods = (data.allocations ?? []).filter((a) => a.mode === 'named' && /^[1-5]$/.test(a.standard)).reduce((s, a) => s + a.periods, 0)
+  const fteTarget = effectiveLimits(rules, rules.workload.SGT).target || 30
+  const sgt = hasAlloc ? Math.round((primPeriods / fteTarget) * 10) / 10 : byCat('SGT').length
   if (primary > 0) {
     const ratio = sgt ? primary / sgt : Infinity
     add({
       id: 'rte-ptr-primary', status: ratio <= 30 ? 'pass' : 'fail', severity: 'critical', area: 'Class size & ratios',
       title: 'RTE: Classes 1–5 pupil–teacher ratio not above 30:1',
-      finding: sgt ? `${primary} students / ${sgt} primary teachers = ${ratio.toFixed(1)}:1` : 'No primary teachers recorded.',
-      action: `Appoint ${Math.max(0, Math.ceil(primary / 30) - sgt)} more primary teacher(s).`,
+      finding: sgt ? `${primary} students / ${sgt} ${hasAlloc ? `full-time-equivalent teachers (${primPeriods} allocated periods ÷ ${fteTarget})` : 'primary teachers'} = ${ratio.toFixed(1)}:1` : 'No primary teachers recorded.',
+      action: `Appoint ${Math.max(0, Math.ceil(primary / 30 - sgt))} more primary teacher(s).`,
       source: SOURCES.RTE_SCHEDULE,
     })
   }
@@ -290,8 +295,8 @@ export function recommend(ctx: Ctx): Recommendation[] {
       action: 'Classes 11–12 subjects must be taught by PG + B.Ed. teachers in the subject; reassign or recruit.',
       source: isCBSE ? SOURCES.CBSE_51 : SOURCES.TN_RULES_2023,
     }, pgtBad)
-  const tetI = (t?: string) => ['TNTET1', 'TNTET_BOTH', 'CTET1', 'CTET_BOTH'].includes(t ?? '')
-  const tetII = (t?: string) => ['TNTET2', 'TNTET_BOTH', 'CTET2', 'CTET_BOTH'].includes(t ?? '')
+  const tetI = (t?: string) => ['TNTET1', 'TNTET_BOTH', 'CTET1', 'CTET_BOTH', 'PASSED'].includes(t ?? '')
+  const tetII = (t?: string) => ['TNTET2', 'TNTET_BOTH', 'CTET2', 'CTET_BOTH', 'PASSED'].includes(t ?? '')
   const primNoTet = prim.filter((s) => hasValue(s.tet) && !tetI(s.tet))
   const hasUpper = sections.some((s) => stageOf(s.standard) === 'MIDDLE')
   const tgtNoTet = hasUpper ? tgt.filter((s) => hasValue(s.tet) && !tetII(s.tet)) : []
@@ -366,7 +371,7 @@ export function recommend(ctx: Ctx): Recommendation[] {
   }
   const slots = rules.daysPerWeek * rules.periodsPerDay
   const badAlloc = [...Object.entries(rules.subjectsByStandard), ...rules.hssGroups.map((g) => [g.name, g.subjects] as const)]
-    .filter(([, subs]) => subs.reduce((a, x) => a + x.periods, 0) !== slots)
+    .filter(([, subs]) => !hasAlloc && subs.reduce((a, x) => a + x.periods, 0) !== slots)
     .map(([k]) => k)
   if (badAlloc.length)
     add({
@@ -489,6 +494,8 @@ export function recommend(ctx: Ctx): Recommendation[] {
         add({ id: `cmp-${item.id}`, status: 'fail', severity: left < 0 ? 'critical' : 'high', area: 'Compliance & records', title: item.title, finding: left < 0 ? `Expired on ${fmt(e.validUntil)}.` : `Expires on ${fmt(e.validUntil)} (${left} days).`, action: 'Renew before expiry and record the new validity date.', source: item.source })
     }
   }
+
+  out.push(...allocationChecks(rules, data, sections))
 
   // ------------------------------------------------------------ data quality
   const missingProfile = [

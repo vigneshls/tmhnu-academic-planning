@@ -21,11 +21,15 @@ const PROF: Record<string, ProfessionalQualification> = {
 const TET: Record<string, TetStatus> = {
   'tntet paper i': 'TNTET1', 'tntet paper ii': 'TNTET2', 'tntet both papers': 'TNTET_BOTH', 'ctet paper i': 'CTET1', 'ctet paper ii': 'CTET2', 'ctet both papers': 'CTET_BOTH',
   'not passed': 'NOT_PASSED', no: 'NOT_PASSED', 'not applicable': 'NA', na: 'NA',
+  pass: 'PASSED', passed: 'PASSED', yes: 'PASSED', 'passed paper not stated': 'PASSED', 'tntet passed': 'PASSED', 'ctet passed': 'PASSED',
 }
 const APPT: Record<string, Appointment> = { regular: 'REGULAR', probation: 'PROBATION', contract: 'CONTRACT', 'part time': 'PART_TIME', parttime: 'PART_TIME' }
 const SHORT: Record<string, Category> = {
   principal: 'PRINCIPAL', 'vice principal': 'ACAD_HEAD', 'academic head': 'ACAD_HEAD', hod: 'ACAD_HEAD', pgt: 'PGT', 'pg assistant': 'PGT', 'pg asst': 'PGT',
   tgt: 'TGT', 'bt assistant': 'TGT', 'bt asst': 'TGT', prt: 'SGT', sgt: 'SGT', 'pre primary teacher': 'MONTESSORI', montessori: 'MONTESSORI', pet: 'SPECIALIST',
+  coordinator: 'ACAD_HEAD', 'academic coordinator': 'ACAD_HEAD', 'upper primary': 'TGT', 'middle school': 'TGT', primary: 'SGT', 'primary teacher': 'SGT',
+  nursery: 'MONTESSORI', 'nursery teacher': 'MONTESSORI', nt: 'MONTESSORI', kg: 'MONTESSORI', 'kg teacher': 'MONTESSORI', pt: 'SPECIALIST', 'pe teacher': 'SPECIALIST',
+  'physical education teacher': 'SPECIALIST', 'art teacher': 'SPECIALIST', 'music teacher': 'SPECIALIST', 'computer teacher': 'SPECIALIST',
   'special educator': 'SPECIAL_EDUCATOR', counsellor: 'COUNSELLOR', 'counsellor wellness teacher': 'COUNSELLOR', 'career counsellor': 'CAREER_COUNSELLOR', librarian: 'LIBRARIAN', 'lab assistant': 'LAB_ASSISTANT',
 }
 const DESIGNATION = new Map<string, Category>([
@@ -166,6 +170,6 @@ export function parseFacultyRows(rows: Cell[][], idPrefix = 'st'): ParseResult {
 export const LABEL = {
   highest: { HSC: 'Higher Secondary', DIPLOMA: 'Diploma', UG: 'UG Degree', PG: 'PG Degree', MPHIL: 'M.Phil', PHD: 'Ph.D', '': '—' } as Record<string, string>,
   prof: { DELED: 'D.El.Ed / D.T.Ed', BELED: 'B.El.Ed', BED: 'B.Ed', MED: 'M.Ed', NTT: 'NTT / Montessori', BPED: 'B.P.Ed / M.P.Ed', SPLED: 'B.Ed (Spl. Ed.) / RCI', NONE: 'None', '': '—' } as Record<string, string>,
-  tet: { TNTET1: 'TNTET I', TNTET2: 'TNTET II', TNTET_BOTH: 'TNTET I & II', CTET1: 'CTET I', CTET2: 'CTET II', CTET_BOTH: 'CTET I & II', NOT_PASSED: 'Not passed', NA: 'N/A', '': '—' } as Record<string, string>,
+  tet: { TNTET1: 'TNTET I', TNTET2: 'TNTET II', TNTET_BOTH: 'TNTET I & II', CTET1: 'CTET I', CTET2: 'CTET II', CTET_BOTH: 'CTET I & II', PASSED: 'Passed (paper not stated)', NOT_PASSED: 'Not passed', NA: 'N/A', '': '—' } as Record<string, string>,
   appt: { REGULAR: 'Regular', PROBATION: 'Probation', CONTRACT: 'Contract', PART_TIME: 'Part-time', '': '—' } as Record<string, string>,
 }

@@ -6,6 +6,7 @@ import { store } from '../data/store'
 import { BOARD_LABEL } from '../engine/rules'
 import type { RuleSet, School, SchoolData } from '../engine/types'
 import { Badge, Button, PageHeader, Tabs } from '../ui/kit'
+import AllocationTab from './school/AllocationTab'
 import ComplianceTab from './school/ComplianceTab'
 import FacultyTab from './school/FacultyTab'
 import OverviewTab from './school/OverviewTab'
@@ -14,7 +15,7 @@ import RequirementTab from './school/RequirementTab'
 import StrengthTab from './school/StrengthTab'
 import TimetableTab from './school/TimetableTab'
 
-type Tab = 'overview' | 'students' | 'staffing' | 'faculty' | 'timetable' | 'compliance' | 'profile'
+type Tab = 'overview' | 'students' | 'allocation' | 'staffing' | 'faculty' | 'timetable' | 'compliance' | 'profile'
 
 export default function SchoolPage() {
   const { id = '' } = useParams()
@@ -76,11 +77,14 @@ export default function SchoolPage() {
         </>}
       />
       <Tabs<Tab> value={tab} onChange={setTab} tabs={[
-        ['overview', 'Overview', issues], ['students', 'Students'], ['staffing', 'Staffing'], ['faculty', 'Faculty'],
+        ['overview', 'Overview', issues], ['students', 'Students'],
+        ...(data.allocations?.length ? ([['allocation', 'Teacher Allocation']] as const) : []),
+        ['staffing', data.allocations?.length ? 'Norm Estimate' : 'Staffing'], ['faculty', 'Faculty'],
         ['timetable', 'Timetable'], ['compliance', 'Compliance', openCompliance], ['profile', 'School Profile'],
       ] as const} />
       {tab === 'overview' && <OverviewTab school={school} data={data} a={a} goTo={setTab} />}
       {tab === 'students' && <StrengthTab rules={a.rules} data={data} sections={a.sections} onChange={update} />}
+      {tab === 'allocation' && <AllocationTab rules={a.rules} data={data} sections={a.sections} />}
       {tab === 'staffing' && <RequirementTab rules={a.rules} sections={a.sections} demand={a.demand} summary={a.summary} />}
       {tab === 'faculty' && <FacultyTab rules={a.rules} data={data} isAdmin={isAdmin} schoolId={school.id} />}
       {tab === 'timetable' && <TimetableTab rules={a.rules} school={school} data={data} sections={a.sections} onChange={update} />}

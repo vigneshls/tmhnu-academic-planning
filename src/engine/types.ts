@@ -20,7 +20,7 @@ export const isTeachingCategory = (c: Category) => !SUPPORT_CATEGORIES.includes(
 
 export type HighestQualification = 'HSC' | 'DIPLOMA' | 'UG' | 'PG' | 'MPHIL' | 'PHD' | ''
 export type ProfessionalQualification = 'DELED' | 'BELED' | 'BED' | 'MED' | 'NTT' | 'BPED' | 'SPLED' | 'NONE' | ''
-export type TetStatus = 'TNTET1' | 'TNTET2' | 'TNTET_BOTH' | 'CTET1' | 'CTET2' | 'CTET_BOTH' | 'NOT_PASSED' | 'NA' | ''
+export type TetStatus = 'TNTET1' | 'TNTET2' | 'TNTET_BOTH' | 'CTET1' | 'CTET2' | 'CTET_BOTH' | 'PASSED' | 'NOT_PASSED' | 'NA' | ''
 export type Appointment = 'REGULAR' | 'PROBATION' | 'CONTRACT' | 'PART_TIME' | ''
 export type SlotPref = 'morning' | 'afternoon' | 'last' | 'any'
 
@@ -128,6 +128,24 @@ export interface SchoolProfile {
   endTime?: string
 }
 
+/** One row of the school's actual teacher allocation (Subject Periods sheet) */
+export interface Allocation {
+  standard: string
+  groupId?: string
+  groupName?: string
+  /** Section letter: A, B, … */
+  section: string
+  subject: string
+  periods: number
+  pref: SlotPref
+  /** Staff ids of the named teacher(s); periods are split between them */
+  teachers: string[]
+  /** Names written in the sheet that did not match the Faculty list */
+  unmatched?: string[]
+  /** named = teacher(s) given; shared = "Subject Wise"/any section teacher; unassigned = blank */
+  mode: 'named' | 'shared' | 'unassigned'
+}
+
 /** Per-school changes to the board rules, normally loaded from the school workbook */
 export interface RuleOverrides {
   daysPerWeek?: number
@@ -154,6 +172,8 @@ export interface SchoolData {
   /** Children with special needs per standard (11/12 summed across groups) */
   cwsn?: Record<string, number>
   overrides?: RuleOverrides
+  /** Actual teacher allocation from the workbook; when present it defines sections and timetable lessons */
+  allocations?: Allocation[]
   /** 'sample' = demo figures; 'import' = loaded from the school's workbook */
   source?: 'sample' | 'import' | 'manual'
   importedAt?: string
@@ -176,6 +196,8 @@ export interface Section {
   label: string
   strength: number
   subjects: SubjectAlloc[]
+  /** Present when the section comes from the school's actual allocation */
+  allocs?: Allocation[]
 }
 
 export interface DemandRow {

@@ -1,11 +1,11 @@
 import type ExcelJSNS from 'exceljs'
 import type { ChecklistItem } from '../../engine/recommend'
-import { CATEGORY_LABEL, isClassTeacherStage, stageOf } from '../../engine/rules'
+import { CATEGORY_LABEL, stageOf } from '../../engine/rules'
 import type { RuleSet, School, SchoolData, Staff } from '../../engine/types'
 import { STANDARDS } from '../../engine/types'
 import { LABEL, TEMPLATE_HEADERS } from '../facultyExcel'
 import {
-  BOARD_OPTIONS, COMPLIANCE_STATUS, HANDLED_BY, PREF_TIME, PROFILE_FIELDS, SHEETS,
+  BOARD_OPTIONS, COMPLIANCE_STATUS, PREF_TIME, PROFILE_FIELDS, SHEETS,
   STUDENT_HEADERS, SUBJECT_HEADERS, YES_NO, classLabel,
 } from './spec'
 
@@ -16,12 +16,12 @@ const INPUT = 'FFFFFBEA'
 
 const HIGHEST = ['Higher Secondary', 'Diploma', 'UG Degree', 'PG Degree', 'M.Phil', 'Ph.D']
 const PROF = ['D.El.Ed / D.T.Ed', 'B.El.Ed', 'B.Ed', 'M.Ed', 'NTT / Montessori', 'B.P.Ed / M.P.Ed', 'B.Ed (Special Education) / RCI', 'None']
-const TET = ['TNTET Paper I', 'TNTET Paper II', 'TNTET Both Papers', 'CTET Paper I', 'CTET Paper II', 'CTET Both Papers', 'Not passed', 'Not applicable']
+const TET = ['TNTET Paper I', 'TNTET Paper II', 'TNTET Both Papers', 'CTET Paper I', 'CTET Paper II', 'CTET Both Papers', 'Passed (paper not stated)', 'Not passed', 'Not applicable']
 const APPT = ['Regular', 'Probation', 'Contract', 'Part-time']
 const SUBJECT_SUGGESTIONS = ['All subjects', 'Tamil', 'English', 'Hindi', 'Maths', 'Science', 'Social Science', 'EVS', 'Physics', 'Chemistry', 'Biology', 'Computer Science', 'Computer Applications', 'Accountancy', 'Commerce', 'Business Studies', 'Economics', 'Applied Maths', 'PE / Art', 'Library / Value Ed', 'Counselling', 'Special Education']
 
 const PROF_OUT: Record<string, string> = { DELED: PROF[0], BELED: PROF[1], BED: PROF[2], MED: PROF[3], NTT: PROF[4], BPED: PROF[5], SPLED: PROF[6], NONE: PROF[7] }
-const TET_OUT: Record<string, string> = { TNTET1: TET[0], TNTET2: TET[1], TNTET_BOTH: TET[2], CTET1: TET[3], CTET2: TET[4], CTET_BOTH: TET[5], NOT_PASSED: TET[6], NA: TET[7] }
+const TET_OUT: Record<string, string> = { TNTET1: TET[0], TNTET2: TET[1], TNTET_BOTH: TET[2], CTET1: TET[3], CTET2: TET[4], CTET_BOTH: TET[5], PASSED: TET[6], NOT_PASSED: TET[7], NA: TET[8] }
 const date = (iso?: string) => (iso ? new Date(`${iso}T00:00:00Z`) : null)
 
 export interface BuildOptions {
@@ -52,7 +52,7 @@ export async function buildWorkbook(Excel: ExcelJS, o: BuildOptions): Promise<Ar
     ['1. School Profile', 'Basic details and the daily timetable structure. Required: School Name and Board.'],
     ['2. Students', 'Boys, girls and children with special needs (CWSN) for every class. For Class 11–12 enter one row per group.'],
     ['3. Faculty', 'One row per staff member, including Principal, counsellor, special educator and librarian.'],
-    ['4. Subject Periods', 'Periods per week for each subject. Pre-filled with the board model — change it to the school’s actual timetable. Class 11 rows apply to Class 11 and 12.'],
+    ['4. Subject Periods', 'The actual teacher allocation: one row per section and subject. Section = A, B, C… Teacher Name(s) = pick from the drop-down (names come from the Faculty sheet, so fill Faculty first). Two teachers sharing a subject: "Name1; Name2". Activities taken by any subject teacher (ECA, Club): "Subject Wise". Pre-filled with the board model — change to the school’s actual timetable.'],
     ['', ''],
     ['After filling', 'Send the file to management. On upload, the system checks every row, then calculates sections, teacher requirement, timetable and recommendations.'],
     ['Privacy', 'Do not enter phone numbers, Aadhaar, bank, salary or student names. They are not needed.'],
@@ -67,7 +67,7 @@ export async function buildWorkbook(Excel: ExcelJS, o: BuildOptions): Promise<Ar
   const lists = wb.addWorksheet(SHEETS.lists, { state: 'veryHidden' })
   const LISTS: [string, readonly string[]][] = [
     ['A', Object.values(CATEGORY_LABEL)], ['B', HIGHEST], ['C', PROF], ['D', TET], ['E', APPT], ['F', SUBJECT_SUGGESTIONS],
-    ['G', BOARD_OPTIONS], ['H', YES_NO], ['I', HANDLED_BY], ['J', PREF_TIME], ['K', COMPLIANCE_STATUS],
+    ['G', BOARD_OPTIONS], ['H', YES_NO], ['J', PREF_TIME], ['K', COMPLIANCE_STATUS],
     ['L', ['Pre-KG', 'LKG', 'UKG', ...Array.from({ length: 12 }, (_, i) => `Class ${i + 1}`)]],
   ]
   LISTS.forEach(([col, values]) => values.forEach((v, i) => (lists.getCell(`${col}${i + 1}`).value = v)))
@@ -174,22 +174,33 @@ export async function buildWorkbook(Excel: ExcelJS, o: BuildOptions): Promise<Ar
     fw.getCell(`M${r}`).dataValidation = { type: 'whole', operator: 'between', formulae: [0, 48], allowBlank: true, showErrorMessage: true, error: '0 to 48 periods.' }
   }
 
-  // ---- Subject Periods
+  // ---- Subject Periods (actual allocation: one row per section × subject, with the teacher's name)
   const pw = wb.addWorksheet(SHEETS.subjects)
-  headerRow(pw, SUBJECT_HEADERS, [14, 30, 30, 16, 28, 18])
-  const handled = (std: string, s: RuleSet['subjectsByStandard'][string][number]) =>
-    s.noTeacher ? HANDLED_BY[4] : s.flex ? HANDLED_BY[3] : s.specialist ? HANDLED_BY[2] : isClassTeacherStage(stageOf(std)) ? HANDLED_BY[0] : HANDLED_BY[1]
-  const pref = (p: string) => ({ morning: PREF_TIME[0], afternoon: PREF_TIME[1], last: PREF_TIME[2] } as Record<string, string>)[p] ?? PREF_TIME[3]
-  for (const std of STANDARDS) {
-    if (stageOf(std) === 'HSS') continue
-    for (const s of o.rules.subjectsByStandard[std] ?? []) pw.addRow([classLabel(std), '', s.subject, s.periods, handled(std, s), pref(s.pref)])
+  headerRow(pw, SUBJECT_HEADERS, [12, 26, 10, 26, 14, 34, 18])
+  const pref = (p: string) => ({ morning: PREF_TIME[0], afternoon: PREF_TIME[1], last: PREF_TIME[2] } as Record<string, string>)[p] ?? ''
+  const nameOf = new Map((o.data?.staff ?? []).map((s) => [s.id, s.name]))
+  const allocs = o.prefill ? o.data?.allocations : undefined
+  if (allocs?.length) {
+    for (const a of allocs) {
+      const who = a.mode === 'shared' ? 'Subject Wise' : [...a.teachers.map((id) => nameOf.get(id) ?? ''), ...(a.unmatched ?? [])].filter(Boolean).join('; ')
+      pw.addRow([classLabel(a.standard), a.groupName ?? '', a.section, a.subject, a.periods, who, pref(a.pref)])
+    }
+  } else {
+    for (const std of STANDARDS) {
+      if (stageOf(std) === 'HSS') continue
+      for (const s of o.rules.subjectsByStandard[std] ?? []) pw.addRow([classLabel(std), '', 'A', s.subject, s.periods, s.noTeacher ? '' : '', pref(s.pref)])
+    }
+    for (const g of groups) for (const s of g.subjects) pw.addRow(['Class 11', g.name, 'A', s.subject, s.periods, '', pref(s.pref)])
   }
-  for (const g of groups) for (const s of g.subjects) pw.addRow(['Class 11', g.name, s.subject, s.periods, handled('11', s), pref(s.pref)])
-  const subjLast = pw.rowCount + 60
-  listDV(pw, `A2:A${subjLast}`, 'L'); listDV(pw, `E2:E${subjLast}`, 'I'); listDV(pw, `F2:F${subjLast}`, 'J')
+  const subjLast = pw.rowCount + 150
+  listDV(pw, `A2:A${subjLast}`, 'L'); listDV(pw, `G2:G${subjLast}`, 'J')
   for (let r = 2; r <= subjLast; r++) {
-    pw.getCell(`D${r}`).dataValidation = { type: 'whole', operator: 'between', formulae: [0, 20], allowBlank: true, showErrorMessage: true, error: '0 to 20 periods.' }
-    pw.getCell(`D${r}`).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: INPUT } }
+    pw.getCell(`E${r}`).dataValidation = { type: 'whole', operator: 'between', formulae: [0, 20], allowBlank: true, showErrorMessage: true, error: '0 to 20 periods.' }
+    pw.getCell(`F${r}`).dataValidation = {
+      type: 'list', allowBlank: true, formulae: [`'${SHEETS.faculty}'!$B$2:$B$${facLast}`], showErrorMessage: true, errorStyle: 'warning',
+      errorTitle: 'Name not in Faculty sheet', error: 'Pick a name from the Faculty sheet. For two teachers type both names separated by ";". For activities taught by any subject teacher type "Subject Wise".',
+    }
+    ;['C', 'E', 'F'].forEach((c) => (pw.getCell(`${c}${r}`).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: INPUT } }))
   }
 
   wb.views = [{ x: 0, y: 0, width: 20000, height: 12000, firstSheet: 0, activeTab: 0, visibility: 'visible' }]

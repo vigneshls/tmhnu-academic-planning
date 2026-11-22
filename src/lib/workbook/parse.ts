@@ -1,7 +1,8 @@
-import { isClassTeacherStage, stageOf } from '../../engine/rules'
-import type { Board, ComplianceEntry, GenderCount, HssGroup, RuleSet, SchoolProfile, Staff, SubjectAlloc } from '../../engine/types'
+import { stageOf } from '../../engine/rules'
+import type { Allocation, Board, ComplianceEntry, GenderCount, HssGroup, RuleSet, SchoolProfile, Staff, SubjectAlloc } from '../../engine/types'
+import { isSharedWord, makeMatcher, splitNames } from './names'
 import { parseFacultyRows, type Cell } from '../facultyExcel'
-import { CLASS_LABELS, COMPLIANCE_HEADERS, HANDLED_BY, PREF_TIME, PROFILE_FIELDS, SHEETS, STUDENT_HEADERS, SUBJECT_HEADERS, classKey, classLabel, slug } from './spec'
+import { CLASS_LABELS, COMPLIANCE_HEADERS, HANDLED_BY, PREF_TIME, PROFILE_FIELDS, SHEETS, STUDENT_HEADERS, classKey, classLabel, slug } from './spec'
 
 export interface Issue {
   sheet: string
@@ -26,6 +27,9 @@ export interface WorkbookData {
   subjectsByStandard?: Record<string, SubjectAlloc[]>
   hssGroups?: HssGroup[]
   compliance: Record<string, ComplianceEntry>
+  allocations?: Allocation[]
+  /** Written names matched to a faculty member with a different spelling */
+  nameFixes: { written: string; matched: string }[]
   issues: Issue[]
   sheetsFound: string[]
 }
@@ -72,7 +76,7 @@ export function parseWorkbook(sheets: { sheet: string; data: Cell[][] }[], defau
   const issues: Issue[] = []
   const by = new Map(sheets.map((s) => [k(s.sheet), s.data]))
   const get = (name: string) => by.get(k(name))
-  const out: WorkbookData = { profile: {}, strength: {}, hss: {}, cwsn: {}, staff: null, compliance: {}, issues, sheetsFound: sheets.map((s) => s.sheet) }
+  const out: WorkbookData = { profile: {}, strength: {}, hss: {}, cwsn: {}, staff: null, compliance: {}, nameFixes: [], issues, sheetsFound: sheets.map((s) => s.sheet) }
   const err = (sheet: string, message: string, row?: number, column?: string) => issues.push({ sheet, row, column, level: 'error', message })
   const warn = (sheet: string, message: string, row?: number, column?: string) => issues.push({ sheet, row, column, level: 'warning', message })
 
@@ -137,61 +141,134 @@ export function parseWorkbook(sheets: { sheet: string; data: Cell[][] }[], defau
   const board: Board = out.board ?? 'MATRIC'
   const base = defaults(board)
 
-  // ---------------- Subject Periods (optional — board defaults used when absent)
+  // ---------------- Faculty
+  const fac = get(SHEETS.faculty)
+  if (!fac) err(SHEETS.faculty, 'Sheet "Faculty" not found.')
+  else {
+    const r = parseFacultyRows(fac, `st-${Date.now().toString(36)}`)
+    r.errors.forEach((e) => issues.push({ sheet: SHEETS.faculty, row: e.row, column: e.column, level: /^No faculty rows/.test(e.message) ? 'warning' : 'error', message: e.message }))
+    r.warnings.forEach((e) => issues.push({ sheet: SHEETS.faculty, row: e.row, column: e.column, level: 'warning', message: e.message }))
+    out.staff = r.staff
+
+  }
+
+  // ---------------- Subject Periods — the school's actual allocation (optional; board defaults used when absent)
   const subj = get(SHEETS.subjects)
   const groupIdByName = new Map<string, string>(base.hssGroups.map((g) => [k(g.name), g.id]))
   if (subj) {
-    const h = header(subj, SUBJECT_HEADERS[0])
-    if (!h || h.col('Subject') < 0) err(SHEETS.subjects, 'Header row not found (Class, Group, Subject, Periods per Week, Handled By, Preferred Time).')
+    const hi = subj.findIndex((r) => r.some((c) => k(text(c)) === 'subject'))
+    if (hi < 0) err(SHEETS.subjects, 'Header row not found (Class, Group, Section, Subject, Periods per Week, Teacher Name(s), Preferred Time).')
     else {
-      const byStd: Record<string, SubjectAlloc[]> = {}
-      const groups = new Map<string, HssGroup>()
-      const groupSource = new Map<string, string>()
-      subj.slice(h.index + 1).forEach((r, i) => {
-        const row = h.index + 2 + i
-        if (r.every((c) => text(c) === '')) return
-        const std = classKey(text(r[h.col('Class')]))
-        if (!std) { err(SHEETS.subjects, `Unknown class "${text(r[h.col('Class')])}".`, row, 'Class'); return }
-        const subject = text(r[h.col('Subject')]).slice(0, 60)
-        if (!subject) { err(SHEETS.subjects, 'Subject is required.', row, 'Subject'); return }
-        const periods = toInt(r[h.col('Periods per Week')], 0, 20)
-        if (periods === null || periods === undefined) { err(SHEETS.subjects, 'Periods per Week must be a number 0–20.', row, 'Periods per Week'); return }
-        const hb = k(text(r[h.col('Handled By')]))
-        const pt = k(text(r[h.col('Preferred Time')]))
-        const handled = HANDLED_BY.find((x) => k(x) === hb) ?? (hb ? null : 'Subject Teacher')
-        if (!handled) warn(SHEETS.subjects, `Unknown "Handled By" value; treated as Subject Teacher.`, row, 'Handled By')
-        const pref = ({ [k(PREF_TIME[0])]: 'morning', [k(PREF_TIME[1])]: 'afternoon', [k(PREF_TIME[2])]: 'last' } as Record<string, SubjectAlloc['pref']>)[pt] ?? 'any'
-        const alloc: SubjectAlloc = { subject, periods, pref }
-        if (handled === 'Specialist') alloc.specialist = true
-        if (handled === 'Shared (any section teacher)') alloc.flex = true
-        if (handled === 'No Teacher (supervised)') alloc.noTeacher = true
-        if (handled === 'Class Teacher' && !isClassTeacherStage(stageOf(std))) warn(SHEETS.subjects, `"Class Teacher" applies only up to Class 5; ${classLabel(std)} treated as Subject Teacher.`, row, 'Handled By')
-        if (periods === 0) return
-        if (stageOf(std) === 'HSS') {
-          const gname = text(r[h.col('Group (Class 11–12 only)')])
-          if (!gname) { err(SHEETS.subjects, 'Group is required for Class 11 and 12.', row, 'Group'); return }
-          const id = groupIdByName.get(k(gname)) ?? slug(gname)
-          groupIdByName.set(k(gname), id)
-          // Class 11 and 12 share one allocation per group; the first class listed for a group defines it
-          const g = groups.get(id) ?? { id, name: gname.slice(0, 40), subjects: [] }
-          if (!groupSource.has(id)) groupSource.set(id, std)
-          if (groupSource.get(id) === std) g.subjects.push(alloc)
-          groups.set(id, g)
-        } else {
-          ;(byStd[std] ??= []).push(alloc)
+      const head = subj[hi].map((c) => k(text(c)))
+      const col = (...names: string[]) => head.findIndex((h) => names.map(k).includes(h))
+      const body = subj.slice(hi + 1)
+      const cClass = col('Class')
+      const cGroup = head.findIndex((h) => h.startsWith('group'))
+      const cSection = col('Section')
+      const cSubject = col('Subject')
+      const cPeriods = head.findIndex((h) => h.startsWith('periods'))
+      const cPref = col('Preferred Time')
+      // Teacher column: "Teacher Name(s)", or — older layout — the "Handled By" column that holds names (the type column is ignored)
+      let cTeacher = head.findIndex((h) => h.startsWith('teacher'))
+      if (cTeacher < 0) {
+        const handled = head.map((h, i) => (h === 'handled by' ? i : -1)).filter((i) => i >= 0)
+        const typeWords = new Set(HANDLED_BY.map(k))
+        const score = (i: number) => body.filter((r) => { const v = k(text(r[i])); return v && !typeWords.has(v) }).length
+        cTeacher = handled.sort((a, b) => score(b) - score(a))[0] ?? -1
+        if (handled.length > 1) warn(SHEETS.subjects, `Two "Handled By" columns found — teacher names taken from column ${String.fromCharCode(65 + cTeacher)}; the other column is ignored.`)
+      }
+      if (cClass < 0 || cSubject < 0 || cPeriods < 0) err(SHEETS.subjects, 'Columns Class, Subject and Periods per Week are required.')
+      else {
+        const match = makeMatcher(out.staff ?? [])
+        const fixes = new Map<string, string>()
+        const unknown = new Map<string, number[]>()
+        const allocs: Allocation[] = []
+        let lastClass = ''
+        let lastGroup = ''
+        const seen = new Map<string, { letter: number; subjects: Set<string> }>()
+        body.forEach((r, i) => {
+          const row = hi + 2 + i
+          if (r.every((c) => text(c) === '')) return
+          const rawClass = text(r[cClass])
+          const rawGroup = cGroup >= 0 ? text(r[cGroup]) : ''
+          const std = rawClass ? classKey(rawClass) : classKey(lastClass)
+          if (!rawClass && !lastClass) { err(SHEETS.subjects, 'Class is missing.', row, 'Class'); return }
+          if (!std) { err(SHEETS.subjects, `Unknown class "${rawClass}".`, row, 'Class'); return }
+          if (rawClass && rawClass !== lastClass) lastGroup = ''
+          lastClass = rawClass || lastClass
+          const subject = text(r[cSubject]).replace(/\s+/g, ' ').slice(0, 60)
+          if (!subject) { err(SHEETS.subjects, 'Subject is required.', row, 'Subject'); return }
+          const periods = toInt(r[cPeriods], 0, 20)
+          if (periods === null || periods === undefined) { err(SHEETS.subjects, 'Periods per Week must be a number 0–20.', row, 'Periods per Week'); return }
+          if (periods === 0) return
+          let groupId: string | undefined
+          let groupName: string | undefined
+          if (stageOf(std) === 'HSS') {
+            groupName = (rawGroup || lastGroup).slice(0, 40)
+            if (!groupName) { err(SHEETS.subjects, 'Group is required for Class 11 and 12.', row, 'Group'); return }
+            lastGroup = groupName
+            groupId = groupIdByName.get(k(groupName)) ?? slug(groupName)
+            groupIdByName.set(k(groupName), groupId)
+          }
+          // Section: explicit column, else a repeated subject within the class starts the next section
+          const key = `${std}|${groupId ?? ''}`
+          const st = seen.get(key) ?? { letter: 0, subjects: new Set<string>() }
+          let section: string
+          const explicit = cSection >= 0 ? text(r[cSection]).toUpperCase().replace(/[^A-Z]/g, '').slice(0, 2) : ''
+          if (explicit) section = explicit
+          else {
+            const sk = k(subject)
+            if (st.subjects.has(sk)) { st.letter++; st.subjects = new Set() }
+            st.subjects.add(sk)
+            section = String.fromCharCode(65 + st.letter)
+          }
+          seen.set(key, st)
+          const pt = cPref >= 0 ? k(text(r[cPref])) : ''
+          const model = (groupId ? base.hssGroups.find((g) => g.id === groupId)?.subjects : base.subjectsByStandard[std])?.find((x) => k(x.subject) === k(subject))
+          const pref = ({ [k(PREF_TIME[0])]: 'morning', [k(PREF_TIME[1])]: 'afternoon', [k(PREF_TIME[2])]: 'last' } as Record<string, SubjectAlloc['pref']>)[pt] ?? model?.pref ?? 'any'
+          const cell = cTeacher >= 0 ? text(r[cTeacher]) : ''
+          const a: Allocation = { standard: std, groupId, groupName, section, subject, periods, pref, teachers: [], mode: 'unassigned' }
+          if (cell && isSharedWord(cell)) a.mode = 'shared'
+          else if (cell) {
+            for (const nm of splitNames(cell)) {
+              const m = match(nm)
+              if (m) { if (!a.teachers.includes(m.id)) a.teachers.push(m.id); if (!m.exact) fixes.set(nm, m.name) }
+              else { (a.unmatched ??= []).push(nm); unknown.set(nm, [...(unknown.get(nm) ?? []), row]) }
+            }
+            a.mode = a.teachers.length ? 'named' : 'unassigned'
+          }
+          allocs.push(a)
+        })
+        for (const [written, matched] of fixes) { out.nameFixes.push({ written, matched }); warn(SHEETS.subjects, `"${written}" matched to faculty "${matched}" (spelling differs).`, undefined, 'Teacher Name(s)') }
+        for (const [nm, rows] of unknown) warn(SHEETS.subjects, `"${nm}" is not in the Faculty sheet (rows ${rows.slice(0, 6).join(', ')}${rows.length > 6 ? '…' : ''}). Add the teacher or correct the spelling.`, rows[0], 'Teacher Name(s)')
+        if (allocs.length) {
+          // Only a sheet that names teachers is a real allocation; a blank model sheet just sets subject periods
+          if (allocs.some((a) => a.mode === 'named')) out.allocations = allocs
+          // Board-style allocation (section A of each class) for norm-based calculations
+          const byStd: Record<string, SubjectAlloc[]> = {}
+          const groups = new Map<string, HssGroup>()
+          for (const a of allocs.filter((x) => x.section === 'A')) {
+            const model = (a.groupId ? base.hssGroups.find((g) => g.id === a.groupId)?.subjects : base.subjectsByStandard[a.standard])?.find((x) => k(x.subject) === k(a.subject))
+            const sa: SubjectAlloc = { subject: a.subject, periods: a.periods, pref: a.pref }
+            if (model?.specialist) sa.specialist = true
+            if (model?.noTeacher) sa.noTeacher = true
+            if (a.mode === 'shared' || (model?.flex && a.mode !== 'named')) sa.flex = true
+            if (a.groupId) {
+              const g = groups.get(a.groupId) ?? { id: a.groupId, name: a.groupName ?? a.groupId, subjects: [] }
+              if (a.standard === '11' || !groups.has(a.groupId)) g.subjects.push(sa)
+              groups.set(a.groupId, g)
+            } else (byStd[a.standard] ??= []).push(sa)
+          }
+          if (Object.keys(byStd).length) out.subjectsByStandard = byStd
+          if (groups.size) out.hssGroups = [...groups.values()]
+          // Weekly totals per section
+          const slots = (out.daysPerWeek ?? base.daysPerWeek) * (out.periodsPerDay ?? base.periodsPerDay)
+          const tot = new Map<string, number>()
+          for (const a of allocs) { const kk = `${classLabel(a.standard)}${a.groupName ? ' ' + a.groupName : ''} ${a.section}`; tot.set(kk, (tot.get(kk) ?? 0) + a.periods) }
+          const over = [...tot].filter(([, v]) => v > slots)
+          if (over.length) warn(SHEETS.subjects, `${over.length} section(s) have more periods than the week allows (${slots} = ${out.daysPerWeek ?? base.daysPerWeek} days × ${out.periodsPerDay ?? base.periodsPerDay} periods), e.g. ${over.slice(0, 3).map(([kk, v]) => `${kk}: ${v}`).join('; ')}. Check Working Days per Week in School Profile.`)
         }
-      })
-      const slots = (out.daysPerWeek ?? base.daysPerWeek) * (out.periodsPerDay ?? base.periodsPerDay)
-      for (const [std, list] of Object.entries(byStd)) {
-        const total = list.reduce((a, s) => a + s.periods, 0)
-        if (total !== slots) warn(SHEETS.subjects, `${classLabel(std)}: periods add up to ${total}, but the week has ${slots} slots.`)
       }
-      for (const g of groups.values()) {
-        const total = g.subjects.reduce((a, s) => a + s.periods, 0)
-        if (total !== slots) warn(SHEETS.subjects, `Group ${g.name}: periods add up to ${total}, but the week has ${slots} slots.`)
-      }
-      if (Object.keys(byStd).length) out.subjectsByStandard = byStd
-      if (groups.size) out.hssGroups = [...groups.values()]
     }
   }
 
@@ -203,11 +280,16 @@ export function parseWorkbook(sheets: { sheet: string; data: Cell[][] }[], defau
     if (!h || h.col('Boys') < 0 || h.col('Girls') < 0) err(SHEETS.students, 'Header row not found (Class, Group, Boys, Girls, CWSN).')
     else {
       const knownGroups = new Set((out.hssGroups ?? base.hssGroups).map((g) => g.id))
+      let lastStd = ''
       st.slice(h.index + 1).forEach((r, i) => {
         const row = h.index + 2 + i
         if (r.every((c) => text(c) === '')) return
-        const std = classKey(text(r[h.col('Class')]))
-        if (!std) { err(SHEETS.students, `Unknown class "${text(r[h.col('Class')])}".`, row, 'Class'); return }
+        const rawClass = text(r[h.col('Class')])
+        const rawGroup = text(r[h.col('Group (Class 11–12 only)')])
+        if (!rawClass && !rawGroup) return // totals row
+        const std = rawClass ? classKey(rawClass) : stageOf(lastStd || '1') === 'HSS' ? lastStd : null
+        if (!std) { err(SHEETS.students, rawClass ? `Unknown class "${rawClass}".` : 'Class is missing.', row, 'Class'); return }
+        lastStd = std
         const boys = toInt(r[h.col('Boys')], 0, 3000)
         const girls = toInt(r[h.col('Girls')], 0, 3000)
         const cw = toInt(r[h.col('Children with Special Needs (CWSN)')], 0, 3000)
@@ -234,17 +316,6 @@ export function parseWorkbook(sheets: { sheet: string; data: Cell[][] }[], defau
       })
       if (!Object.keys(out.strength).length && !Object.keys(out.hss).length) warn(SHEETS.students, 'No student numbers entered.')
     }
-  }
-
-  // ---------------- Faculty
-  const fac = get(SHEETS.faculty)
-  if (!fac) err(SHEETS.faculty, 'Sheet "Faculty" not found.')
-  else {
-    const r = parseFacultyRows(fac, `st-${Date.now().toString(36)}`)
-    r.errors.forEach((e) => issues.push({ sheet: SHEETS.faculty, row: e.row, column: e.column, level: /^No faculty rows/.test(e.message) ? 'warning' : 'error', message: e.message }))
-    r.warnings.forEach((e) => issues.push({ sheet: SHEETS.faculty, row: e.row, column: e.column, level: 'warning', message: e.message }))
-    out.staff = r.staff
-
   }
 
   // ---------------- Compliance (optional)

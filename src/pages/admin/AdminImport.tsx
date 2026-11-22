@@ -35,6 +35,7 @@ function buildNext(cur: SchoolData, p: WorkbookData): SchoolData {
     profile: p.profile,
     overrides: { daysPerWeek: p.daysPerWeek, periodsPerDay: p.periodsPerDay, lunchAfterPeriod: p.lunchAfterPeriod, subjectsByStandard: p.subjectsByStandard, hssGroups: p.hssGroups },
     compliance: cur.compliance,
+    allocations: p.allocations,
     timetable: undefined,
     source: 'import',
   }
@@ -103,7 +104,7 @@ export default function AdminImport() {
               <li><b className="text-slate-800">School Profile</b> — details and daily timetable structure</li>
               <li><b className="text-slate-800">Students</b> — boys, girls, CWSN by class and group</li>
               <li><b className="text-slate-800">Faculty</b> — one row per staff member</li>
-              <li><b className="text-slate-800">Subject Periods</b> — pre-filled board model, edit to actual</li>
+              <li><b className="text-slate-800">Subject Periods</b> — each section’s subjects with the teacher’s name (drop-down from Faculty)</li>
             </ol>
             <div className="flex flex-col gap-2">
               <Button variant="primary" disabled={!!busy} onClick={async () => { setBusy('Preparing workbook…'); try { await download(school, rules[school.board], current, false) } finally { setBusy('') } }}>{Icon.download} Blank workbook for this school</Button>
@@ -133,7 +134,7 @@ export default function AdminImport() {
                     [SHEETS.profile, parsed.schoolName ? 'Read' : 'Missing'],
                     [SHEETS.students, `${Object.values(parsed.strength).reduce((a, c) => a + c.boys + c.girls, 0) + Object.values(parsed.hss).flatMap((g) => Object.values(g)).reduce((a, c) => a + c.boys + c.girls, 0)} students`],
                     [SHEETS.faculty, `${parsed.staff?.length ?? 0} staff`],
-                    [SHEETS.subjects, parsed.subjectsByStandard ? `${Object.keys(parsed.subjectsByStandard).length + (parsed.hssGroups?.length ?? 0)} classes / groups` : 'Board default'],
+                    [SHEETS.subjects, parsed.allocations ? `${parsed.allocations.length} rows · ${parsed.allocations.filter((x) => x.mode === 'named').length} with teacher${parsed.nameFixes.length ? ` · ${parsed.nameFixes.length} names matched` : ''}` : parsed.subjectsByStandard ? `${Object.keys(parsed.subjectsByStandard).length + (parsed.hssGroups?.length ?? 0)} classes / groups (no teachers named)` : 'Board default'],
                   ].map(([s, v]) => {
                     const n = parsed.issues.filter((i) => i.sheet === s && i.level === 'error').length
                     return (

@@ -8,11 +8,18 @@ const norm = (x: string) => x.trim().toLowerCase()
 // ---------------- teacher assignment ----------------
 
 export function assignTeachers(rules: RuleSet, sections: Section[], staff: Staff[]) {
+  // Periods already given to named teachers in the school's allocation
+  const named = new Map<string, number>()
+  for (const sec of sections)
+    for (const a of sec.allocs ?? [])
+      if (a.mode === 'named') a.teachers.forEach((id, i) => named.set(id, (named.get(id) ?? 0) + Math.floor(a.periods / a.teachers.length) + (i < a.periods % a.teachers.length ? 1 : 0)))
   const teachers: TeacherRef[] = staff
-    .filter((s) => isTeachingCategory(s.category) && (s.category !== 'PRINCIPAL' || (s.maxPerWeek ?? 0) > 0))
+    .filter((s) => named.has(s.id) || (isTeachingCategory(s.category) && (s.category !== 'PRINCIPAL' || (s.maxPerWeek ?? 0) > 0)))
     .map((s) => {
       const lim = effectiveLimits(rules, rules.workload[s.category], s)
-      return { id: s.id, name: s.name, category: s.category, maxPerWeek: lim.perWeek, maxPerDay: lim.perDay, vacancy: false }
+      const n = named.get(s.id) ?? 0
+      // The school's own allocation is respected even above policy; overload is reported separately
+      return { id: s.id, name: s.name, category: s.category, maxPerWeek: Math.max(lim.perWeek, n), maxPerDay: Math.max(lim.perDay, Math.ceil(n / rules.daysPerWeek)), vacancy: false }
     })
   const subjOf = new Map(staff.map((s) => [s.id, s.subjects.map(norm)]))
   const load = new Map<string, number>(teachers.map((t) => [t.id, 0]))
@@ -54,7 +61,27 @@ export function assignTeachers(rules: RuleSet, sections: Section[], staff: Staff
   }
 
   // 1) class teachers (pre-primary & primary)
+  // 0) sections with the school's own allocation — named periods first, then shared ones fill spare capacity
+  const allocSecs = sections.filter((s) => s.allocs)
+  for (const sec of allocSecs)
+    for (const a of sec.allocs!) {
+      if (a.mode !== 'named') continue
+      a.teachers.forEach((id, i) => {
+        const n = Math.floor(a.periods / a.teachers.length) + (i < a.periods % a.teachers.length ? 1 : 0)
+        if (n > 0) { load.set(id, (load.get(id) ?? 0) + n); lessons.push({ id: `${sec.id}|${a.subject}|${id}`, sectionId: sec.id, subject: a.subject, teacherId: id, count: n, pref: a.pref }) }
+      })
+    }
+  for (const sec of allocSecs) {
+    const mine = [...new Set(sec.allocs!.filter((a) => a.mode === 'named').flatMap((a) => a.teachers))].map((id) => byId.get(id)!).filter(Boolean)
+    for (const a of sec.allocs!) {
+      if (a.mode === 'named') continue
+      const t = pick(mine, a.periods) ?? vacancy(teacherCategoryFor(sec, {}), a.mode === 'shared' ? `${a.subject} (shared)` : `${a.subject} (unassigned)`, a.periods)
+      load.set(t.id, (load.get(t.id) ?? 0) + a.periods)
+      lessons.push({ id: `${sec.id}|${a.subject}|${t.id}`, sectionId: sec.id, subject: a.subject, teacherId: t.id, count: a.periods, pref: a.pref })
+    }
+  }
   for (const sec of sections) {
+    if (sec.allocs) continue
     if (!isClassTeacherStage(sec.stage)) continue
     const cat = categoryForStage(sec.stage)
     const core = sec.subjects.filter((s) => !s.specialist && !s.noTeacher)
@@ -66,7 +93,7 @@ export function assignTeachers(rules: RuleSet, sections: Section[], staff: Staff
   }
   // 2) subject teachers: best-fit decreasing (mirrors the demand calculation)
   const items: { sec: Section; sub: Section['subjects'][number] }[] = []
-  for (const sec of sections)
+  for (const sec of sections.filter((s) => !s.allocs))
     for (const sub of sec.subjects) {
       if (sub.noTeacher) { give(sec, sub.subject, sub.periods, sub.pref, null); continue }
       if (sub.flex) continue
@@ -94,7 +121,7 @@ export function assignTeachers(rules: RuleSet, sections: Section[], staff: Staff
     give(sec, sub.subject, sub.periods, sub.pref, t)
   }
   // 3) flex periods (Club / Library) go to a teacher with spare capacity, preferably one already in the section
-  for (const sec of sections)
+  for (const sec of sections.filter((s) => !s.allocs))
     for (const sub of sec.subjects.filter((s) => s.flex)) {
       const cat = teacherCategoryFor(sec, sub)
       const mine = [...(sectionTeachers.get(sec.id) ?? [])].map((id) => byId.get(id)!)
