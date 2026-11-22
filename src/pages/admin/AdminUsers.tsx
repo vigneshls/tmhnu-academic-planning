@@ -109,12 +109,10 @@ export default function AdminUsers() {
 
       <Modal open={!!resetFor} title={`Reset password — ${resetFor?.email ?? ''}`} onClose={() => setResetFor(null)}>
         {resetFor && (
-          <form className="space-y-4" onSubmit={async (e) => { e.preventDefault(); try { const m = await store.resetPassword(resetFor, newPw); setNotice(store.mode === 'demo' ? `${m} New password: ${newPw}` : m); setResetFor(null) } catch (er) { setMsg((er as Error).message) } }}>
-            {store.mode === 'demo' ? (
-              <Field label="New password" hint={PASSWORD_RULE}><div className="flex gap-2"><input className={`${inputCls} font-mono`} value={newPw} onChange={(e) => setNewPw(e.target.value)} /><Button type="button" onClick={() => setNewPw(genPassword())}>Generate</Button></div></Field>
-            ) : <p className="text-sm text-slate-600">A secure reset link will be emailed to the user.</p>}
+          <form className="space-y-4" onSubmit={async (e) => { e.preventDefault(); try { const m = await store.resetPassword(resetFor, newPw); setNotice(`${m} New password: ${newPw} — share it with the user privately.`); setResetFor(null) } catch (er) { setMsg((er as Error).message) } }}>
+            <Field label="New password" hint={PASSWORD_RULE}><div className="flex gap-2"><input className={`${inputCls} font-mono`} value={newPw} onChange={(e) => setNewPw(e.target.value)} /><Button type="button" onClick={() => setNewPw(genPassword())}>Generate</Button></div></Field>
             {msg && <p className="text-sm text-red-700">{msg}</p>}
-            <div className="flex justify-end gap-2"><Button type="button" onClick={() => setResetFor(null)}>Cancel</Button><Button variant="primary">{store.mode === 'demo' ? 'Set password' : 'Send reset link'}</Button></div>
+            <div className="flex justify-end gap-2"><Button type="button" onClick={() => setResetFor(null)}>Cancel</Button><Button variant="primary">Set password</Button></div>
           </form>
         )}
       </Modal>

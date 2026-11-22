@@ -305,11 +305,7 @@ class DemoStore implements Store {
 class SupabaseStore implements Store {
   mode = 'supabase' as const
   private sb: SupabaseClient
-  private url: string
-  private key: string
   constructor(url: string, key: string) {
-    this.url = url
-    this.key = key
     this.sb = createClient(url, key)
   }
   private async audit(action: string, schoolId: string | null, detail?: string) {
@@ -400,12 +396,8 @@ class SupabaseStore implements Store {
     if (!validEmail(email)) throw new Error('Enter a valid email address.')
     if (!validPassword(n.password)) throw new Error(PASSWORD_RULE)
     if (n.role === 'principal' && !n.schoolId) throw new Error('Choose the school for this principal.')
-    // A separate client so the administrator stays signed in while the new account is registered.
-    const tmp = createClient(this.url, this.key, { auth: { persistSession: false, autoRefreshToken: false, storageKey: 'tmhnu-signup' } })
-    const { data, error } = await tmp.auth.signUp({ email, password: n.password })
-    this.check(error)
-    if (!data.user || (data.user.identities && data.user.identities.length === 0)) throw new Error('A user with this email already exists.')
-    this.check((await this.sb.from('profiles').insert({ user_id: data.user.id, email, full_name: n.name.trim(), role: n.role, school_id: n.role === 'admin' ? null : n.schoolId, active: true })).error)
+    // Created by a database function that only an active administrator may call (supabase/admin_users.sql)
+    this.check((await this.sb.rpc('admin_create_user', { p_email: email, p_password: n.password, p_role: n.role, p_school: n.role === 'admin' ? null : n.schoolId, p_name: n.name.trim() })).error)
     await this.audit('create_user', n.schoolId, email)
   }
   async updateUser(u: UserAccount) {
@@ -414,7 +406,13 @@ class SupabaseStore implements Store {
     this.check((await this.sb.from('profiles').update({ full_name: u.name, role: u.role, school_id: u.role === 'admin' ? null : u.schoolId, active: u.active }).eq('user_id', u.id)).error)
     await this.audit('update_user', u.schoolId, u.email)
   }
-  async resetPassword(u: UserAccount) {
+  async resetPassword(u: UserAccount, newPassword?: string) {
+    if (newPassword) {
+      if (!validPassword(newPassword)) throw new Error(PASSWORD_RULE)
+      this.check((await this.sb.rpc('admin_set_password', { p_user: u.id, p_password: newPassword })).error)
+      await this.audit('reset_password', u.schoolId, u.email)
+      return `Password changed for ${u.email}.`
+    }
     this.check((await this.sb.auth.resetPasswordForEmail(u.email, { redirectTo: location.origin + location.pathname })).error)
     await this.audit('reset_password', null, u.email)
     return `A password reset link has been emailed to ${u.email}.`

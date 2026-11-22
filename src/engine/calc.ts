@@ -147,6 +147,8 @@ export interface SchoolSummary {
   needed: number
   available: number
   shortage: number
+  /** Teachers beyond the need in specific subjects (allocation-based) */
+  excess?: number
   ptr: number | null
   checks: { ok: boolean; text: string }[]
   perStandard: { standard: string; students: number; boys: number; girls: number; sections: number }[]

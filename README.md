@@ -62,13 +62,10 @@ See `src/engine/recommend.ts` and `src/engine/sources.ts`. Every check shows the
 
 ## Modes
 
-- **Demo mode** (default, with no database): sample data. Logins are stored in the browser with PBKDF2-hashed passwords. Demo accounts are shown on the sign-in page.
-- **Live mode:** Supabase (Postgres + Auth + Row Level Security). Set up:
-  1. Create a Supabase project and run [`supabase/schema.sql`](supabase/schema.sql).
-  2. In Authentication → Providers → Email, turn **off** "Confirm email".
-  3. Create the first administrator by following the comments in `schema.sql`.
-  4. In GitHub → Settings → Secrets and variables → Actions → **Variables**, add `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`. Re-run the deploy.
-  5. From then on, create every login from **Admin → Users & Logins**.
+- **Live mode (the deployed site):** Supabase (Postgres + Auth + Row Level Security), project `jfmpjpkvziugslsduriy` (Mumbai). The public URL and anon key are in [`.env.production`](.env.production); all data is protected by RLS: management sees every school, a principal only their own. No real school data is stored in this repository.
+  - Schema: [`supabase/schema.sql`](supabase/schema.sql) then [`supabase/admin_users.sql`](supabase/admin_users.sql).
+  - Management creates logins and sets passwords in **Admin → Users & Logins** (database functions, no confirmation email).
+- **Demo mode** (local builds without `.env.production`, and the standalone HTML): sample data with fictional teachers; logins stored in the browser with PBKDF2-hashed passwords.
 
 ## Development
 

@@ -76,7 +76,16 @@ create policy profiles_read  on public.profiles for select using (user_id = auth
 create policy profiles_write on public.profiles for all    using (public.is_admin()) with check (public.is_admin());
 
 -- rule sets: everyone signed in reads, only management edits
-create policy rules_read  on public.rule_sets for select using (auth.uid() is not null);
+create or replace function public.is_member() returns boolean
+language sql stable security definer set search_path = public as $$
+  select exists (select 1 from profiles where user_id = auth.uid() and active)
+$$;
+revoke execute on function public.is_admin() from public, anon;
+revoke execute on function public.my_school() from public, anon;
+revoke execute on function public.is_member() from public, anon;
+grant execute on function public.is_admin(), public.my_school(), public.is_member() to authenticated;
+
+create policy rules_read  on public.rule_sets for select using (public.is_member());
 create policy rules_write on public.rule_sets for all    using (public.is_admin()) with check (public.is_admin());
 
 -- school data: management = all schools, principal = own school only
@@ -91,10 +100,12 @@ create policy staff_read  on public.school_staff for select using (public.is_adm
 create policy staff_write on public.school_staff for all    using (public.is_admin()) with check (public.is_admin());
 
 -- audit log: users write their own entries, management reads
-create policy audit_insert on public.audit_log for insert with check (user_id = auth.uid());
+create policy audit_insert on public.audit_log for insert with check (user_id = auth.uid() and public.is_member());
 create policy audit_read   on public.audit_log for select using (public.is_admin());
 
 -- ---------------------------------------------------------------------------
+-- Then run supabase/admin_users.sql (management creates logins / sets passwords from the app, no email needed).
+--
 -- FIRST ADMINISTRATOR (one time):
 --   1. Authentication → Users → Add user (email + password, tick "Auto Confirm User").
 --   2. Run:

@@ -57,6 +57,9 @@ describe('named allocation', () => {
     expect(ids.has('alloc-unused')).toBe(true) // E.Rani has no periods
     expect(ids.has('alloc-groups')).toBe(true) // Arts students, no Arts subjects
     expect([...ids].some((x) => x.startsWith('short-'))).toBe(false)
+    const maths = r.staffing!.families.find((f) => f.family === 'maths')!
+    expect(maths).toMatchObject({ required: 0.4, available: 1, status: 'ok' })
+    expect(r.staffing!.families.find((f) => f.family === 'physics')).toMatchObject({ available: 1, status: 'ok' }) // C.Ravi only; D.Mala is Chemistry
     const tt = generateTimetable(r.rules, r.sections, data.staff, { attempts: 3 })
     expect(tt.violations).toEqual([])
     const kumar = p.staff!.find((s) => s.name === 'A.Kumar')!.id
