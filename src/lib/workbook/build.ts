@@ -53,6 +53,8 @@ export async function buildWorkbook(Excel: ExcelJS, o: BuildOptions): Promise<Ar
     ['2. Students', 'Boys, girls and children with special needs (CWSN) for every class. For Class 11–12 enter one row per group.'],
     ['3. Faculty', 'One row per staff member, including Principal, counsellor, special educator and librarian.'],
     ['4. Subject Periods', 'The actual teacher allocation: one row per section and subject. Section = A, B, C… Teacher Name(s) = pick from the drop-down (names come from the Faculty sheet, so fill Faculty first). Two teachers sharing a subject: "Name1; Name2". Activities taken by any subject teacher (ECA, Club): "Subject Wise". Pre-filled with the board model — change to the school’s actual timetable.'],
+    ['   Electives (11–12)', 'List the full group first (e.g. Maths-Biology with all its subjects). An elective option is a group with only its own subjects, named after them (e.g. "Maths-Computer Science": Computer Science; "Pure Science": Botany, Zoology) — it is timetabled at the same time as the full group’s subjects it replaces. Alternatives inside one group (Commerce: Computer Application or Business Maths) are recognised when the Students sheet lists them as groups, or write "(Elective)" after the subject.'],
+    ['   Supervision', 'Sleeping / Nap / Snack time rows are kept in the timetable but not counted as teaching load. Blank teacher on Club / Library / Games rows = any teacher of the section.'],
     ['', ''],
     ['After filling', 'Send the file to management. On upload, the system checks every row, then calculates sections, teacher requirement, timetable and recommendations.'],
     ['Privacy', 'Do not enter phone numbers, Aadhaar, bank, salary or student names. They are not needed.'],

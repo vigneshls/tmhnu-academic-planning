@@ -20,10 +20,11 @@ export default function AllocationTab({ rules, data, sections }: { rules: RuleSe
       const lim = effectiveLimits(rules, w)
       const p = loads.get(s.id)?.periods ?? 0
       const status = p === 0 ? 'unused' : p > w.max ? 'over' : p > lim.perWeek ? 'tight' : p < w.min && !['PRINCIPAL', 'ACAD_HEAD'].includes(s.category) ? 'under' : 'ok'
-      return { s, p, w, status, items: loads.get(s.id)?.items ?? [] }
+      return { s, p, care: loads.get(s.id)?.care ?? 0, w, status, items: loads.get(s.id)?.items ?? [] }
     })
     .sort((a, b) => b.p - a.p)
-  const total = allocs.reduce((a, x) => a + x.periods, 0)
+  const total = allocs.filter((a) => !a.care).reduce((a, x) => a + x.periods, 0)
+  const careTotal = allocs.filter((a) => a.care).reduce((a, x) => a + x.periods, 0)
   const named = allocs.filter((a) => a.mode === 'named').reduce((a, x) => a + x.periods, 0)
   const count = (st: string) => rows.filter((r) => r.status === st).length
   const STATUS: Record<string, [string, 'critical' | 'high' | 'medium' | 'low' | 'pass']> = {
@@ -33,7 +34,7 @@ export default function AllocationTab({ rules, data, sections }: { rules: RuleSe
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-2 gap-4 md:grid-cols-5">
-        <Kpi label="Periods per week" value={total} hint={`${named} with a named teacher`} />
+        <Kpi label="Teaching periods / week" value={total} hint={`${named} with a named teacher${careTotal ? ` · ${careTotal} supervision periods not counted` : ''}`} />
         <Kpi label="Above policy max" value={count('over')} tone={count('over') ? 'bad' : 'good'} />
         <Kpi label="Above schedulable" value={count('tight')} tone={count('tight') ? 'warn' : 'default'} />
         <Kpi label="Below policy min" value={count('under')} />
@@ -46,7 +47,7 @@ export default function AllocationTab({ rules, data, sections }: { rules: RuleSe
             <button key={k} onClick={() => setView(k)} className={cx('rounded-md px-3 py-1', view === k ? 'bg-[#0f2744] text-white' : 'text-slate-600')}>{l}</button>
           ))}
         </div>
-        <Button className="ml-auto" onClick={() => downloadCsv('teacher-allocation.csv', [['Teacher', 'Designation', 'Periods', 'Policy min', 'Policy max', 'Status', 'Allocation'], ...rows.map((r) => [r.s.name, CATEGORY_LABEL[r.s.category], r.p, r.w.min, r.w.max, STATUS[r.status][0], r.items.join(' | ')])])}>Export CSV</Button>
+        <Button className="ml-auto" onClick={() => downloadCsv('teacher-allocation.csv', [['Teacher', 'Designation', 'Teaching periods', 'Supervision periods', 'Policy min', 'Policy max', 'Status', 'Allocation'], ...rows.map((r) => [r.s.name, CATEGORY_LABEL[r.s.category], r.p, r.care, r.w.min, r.w.max, STATUS[r.status][0], r.items.join(' | ')])])}>Export CSV</Button>
       </div>
 
       {view === 'teachers' ? (
@@ -67,7 +68,7 @@ export default function AllocationTab({ rules, data, sections }: { rules: RuleSe
                         <div className={cx('absolute h-2 rounded-full', r.status === 'over' ? 'bg-red-500' : r.status === 'tight' ? 'bg-amber-500' : 'bg-[#0f2744]')} style={{ width: `${Math.min(100, (r.p / 48) * 100)}%` }} />
                       </div>
                     </td>
-                    <td className="px-4 py-2.5 text-right font-semibold tabular-nums">{r.p}</td>
+                    <td className="px-4 py-2.5 text-right font-semibold tabular-nums">{r.p}{r.care ? <span className="ml-1 text-xs font-normal text-slate-400">+{r.care} sup.</span> : null}</td>
                     <td className="px-4 py-2.5 text-right tabular-nums text-slate-500">{r.w.min}–{r.w.max}</td>
                     <td className="px-4 py-2.5"><Badge tone={STATUS[r.status][1]}>{STATUS[r.status][0]}</Badge></td>
                   </tr>
@@ -82,7 +83,7 @@ export default function AllocationTab({ rules, data, sections }: { rules: RuleSe
       ) : (
         <div className="grid gap-4 lg:grid-cols-2">
           {sections.filter((s) => s.allocs).map((sec) => {
-            const sum = sec.allocs!.reduce((a, x) => a + x.periods, 0)
+            const sum = sec.weekPeriods ?? sec.allocs!.reduce((a, x) => a + x.periods, 0)
             const slots = rules.daysPerWeek * rules.periodsPerDay
             return (
               <Card key={sec.id} title={`Class ${sec.label}`} subtitle={`${sec.strength} students`} actions={<Badge tone={sum > slots ? 'critical' : sum < slots ? 'medium' : 'pass'}>{sum}/{slots} periods</Badge>} pad={false}>
@@ -90,10 +91,14 @@ export default function AllocationTab({ rules, data, sections }: { rules: RuleSe
                   <tbody>
                     {sec.allocs!.map((a, i) => (
                       <tr key={i} className="border-t border-slate-100 first:border-t-0">
-                        <td className="px-4 py-2 text-slate-800">{a.subject}</td>
+                        <td className="px-4 py-2 text-slate-800">
+                          {a.subject}
+                          {a.option && <span className="ml-2 rounded bg-indigo-50 px-1.5 py-0.5 text-[11px] text-indigo-700">{a.option === a.subject ? 'Elective' : `Elective: ${a.option}`} · with {a.replaces?.join(' + ')}</span>}
+                          {a.care && <span className="ml-2 rounded bg-slate-100 px-1.5 py-0.5 text-[11px] text-slate-600">Supervision</span>}
+                        </td>
                         <td className="px-4 py-2 text-right tabular-nums text-slate-500">{a.periods}</td>
                         <td className="px-4 py-2">
-                          {a.mode === 'named' ? a.teachers.map((id) => name.get(id)).join(', ') : a.mode === 'shared' ? <span className="text-slate-500">Subject Wise</span> : <Badge tone="high">No teacher{a.unmatched?.length ? `: ${a.unmatched.join(', ')}` : ''}</Badge>}
+                          {a.mode === 'named' ? a.teachers.map((id) => name.get(id)).join(', ') : a.mode === 'shared' ? <span className="text-slate-500">{a.autoShared ? 'Any section teacher' : 'Subject Wise'}</span> : <Badge tone="high">No teacher{a.unmatched?.length ? `: ${a.unmatched.join(', ')}` : ''}</Badge>}
                         </td>
                       </tr>
                     ))}

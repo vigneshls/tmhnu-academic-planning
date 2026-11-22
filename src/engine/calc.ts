@@ -1,6 +1,7 @@
 import { categoryForStage, effectiveLimits, isClassTeacherStage, stageOf } from './rules'
 import type { Allocation, Category, DemandRow, RuleSet, SchoolData, Section, Stage, Staff } from './types'
 import { HSS_STANDARDS, STANDARDS, isTeachingCategory } from './types'
+import { splitParallel } from './parallel'
 
 const LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
 
@@ -238,6 +239,7 @@ function sectionsFromAllocations(rules: RuleSet, data: SchoolData): Section[] {
     keys.sort().forEach((key, i) => {
       const list = bySec.get(key)!
       const a0 = list[0]
+      const sp = splitParallel(list)
       out.push({
         id: `${std}-${gid || 'X'}-${a0.section}`,
         standard: std,
@@ -248,6 +250,8 @@ function sectionsFromAllocations(rules: RuleSet, data: SchoolData): Section[] {
         strength: sizes[i] ?? 0,
         subjects: list.map((a) => ({ subject: a.subject, periods: a.periods, pref: a.pref, ...(a.mode === 'shared' ? { flex: true } : {}) })),
         allocs: list,
+        ...(sp.blocks.length ? { parallel: sp.blocks } : {}),
+        weekPeriods: sp.weekPeriods,
       })
     })
   }

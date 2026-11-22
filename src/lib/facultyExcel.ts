@@ -99,6 +99,7 @@ export function parseFacultyRows(rows: Cell[][], idPrefix = 'st'): ParseResult {
 
   const ids = new Map<string, number>()
   const body = rows.slice(hIdx + 1)
+  const apptDesigRows: number[] = []
   if (body.length > MAX_ROWS) errors.push({ row: hIdx + 2 + MAX_ROWS, message: `More than ${MAX_ROWS} rows; only the first ${MAX_ROWS} are read.` })
   body.slice(0, MAX_ROWS).forEach((r, i) => {
     const rowNo = hIdx + 2 + i
@@ -108,7 +109,10 @@ export function parseFacultyRows(rows: Cell[][], idPrefix = 'st'): ParseResult {
 
     const name = text(get(r, 'Full Name')).slice(0, 80)
     if (!name) { err('Full Name', 'Full Name is required.'); return }
-    const desig = text(get(r, 'Designation'))
+    const apptRaw = text(get(r, 'Appointment Type'))
+    const apptIsDesig = !!apptRaw && !(key(apptRaw) in APPT) && !!categoryFromDesignation(apptRaw)
+    const desig = text(get(r, 'Designation')) || (apptIsDesig ? apptRaw : '')
+    if (!text(get(r, 'Designation')) && apptIsDesig) warn('Designation', `Designation taken from Appointment Type ("${apptRaw}").`)
     const category = categoryFromDesignation(desig)
     if (!category) { err('Designation', desig ? `Unknown designation "${desig}". Choose from the list.` : 'Designation is required.'); return }
 
@@ -135,7 +139,9 @@ export function parseFacultyRows(rows: Cell[][], idPrefix = 'st'): ParseResult {
     const highestQualification = pick('Highest Qualification', HIGHEST)
     const professionalQualification = pick('Professional Qualification', PROF)
     const tet = pick('TET Status', TET)
-    const appointment = pick('Appointment Type', APPT)
+    let appointment: Appointment | '' = ''
+    if (apptIsDesig) apptDesigRows.push(rowNo)
+    else appointment = pick('Appointment Type', APPT)
 
     const doj = toDate(get(r, 'Date of Joining'))
     if (doj === null) warn('Date of Joining', 'Invalid date — use DD-MM-YYYY.')
@@ -162,6 +168,8 @@ export function parseFacultyRows(rows: Cell[][], idPrefix = 'st'): ParseResult {
       maxPerWeek: maxW ?? undefined,
     })
   })
+  if (apptDesigRows.length)
+    warnings.push({ row: apptDesigRows[0], column: 'Appointment Type', message: `${apptDesigRows.length} row(s) have a designation in Appointment Type (rows ${apptDesigRows.slice(0, 8).join(', ')}${apptDesigRows.length > 8 ? '…' : ''}). Use Regular, Probation, Contract or Part-time; left blank.` })
   if (!staff.length && !errors.length) errors.push({ row: hIdx + 2, message: 'No faculty rows found below the header.' })
   return { staff, errors, warnings }
 }

@@ -144,6 +144,20 @@ export interface Allocation {
   unmatched?: string[]
   /** named = teacher(s) given; shared = "Subject Wise"/any section teacher; unassigned = blank */
   mode: 'named' | 'shared' | 'unassigned'
+  /** Elective option this row belongs to (e.g. "Business Maths", "Pure Science"); runs in parallel with the subjects in `replaces` */
+  option?: string
+  /** Subjects of the main stream that this option's students skip; the option is taught at the same time */
+  replaces?: string[]
+  /** Supervised non-teaching period (Sleeping / Nap / Snack time): scheduled, but not counted as teaching load */
+  care?: boolean
+  /** Set when the parser treated a blank teacher as "Subject Wise" (activity periods) */
+  autoShared?: boolean
+}
+
+/** Electives taught at the same time to different students of one section */
+export interface ParallelBlock {
+  count: number
+  lanes: { subject: string; teacherId: string | null }[]
 }
 
 /** Per-school changes to the board rules, normally loaded from the school workbook */
@@ -198,6 +212,10 @@ export interface Section {
   subjects: SubjectAlloc[]
   /** Present when the section comes from the school's actual allocation */
   allocs?: Allocation[]
+  /** Elective periods that run at the same time with different teachers (allocation-based sections) */
+  parallel?: ParallelBlock[]
+  /** Periods the section occupies in the week (parallel electives counted once) */
+  weekPeriods?: number
 }
 
 export interface DemandRow {
@@ -216,6 +234,8 @@ export interface Lesson {
   sectionId: string
   subject: string
   teacherId: string | null
+  /** Other teachers busy in the same period (parallel electives) */
+  coTeacherIds?: string[]
   count: number
   pref: SlotPref
 }
@@ -233,6 +253,7 @@ export interface Cell {
   lessonId: string
   subject: string
   teacherId: string | null
+  coTeacherIds?: string[]
 }
 
 export interface TimetableResult {

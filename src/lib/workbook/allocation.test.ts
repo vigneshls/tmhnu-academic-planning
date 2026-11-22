@@ -40,7 +40,7 @@ describe('named allocation', () => {
     expect(a[0]).toMatchObject({ subject: 'Maths', mode: 'named' })
     expect(p.nameFixes).toEqual([{ written: 'A.Kumaar', matched: 'A.Kumar' }])
     expect(a[2].mode).toBe('shared')
-    expect(a[3].mode).toBe('unassigned')
+    expect(a[3]).toMatchObject({ mode: 'shared', autoShared: true }) // blank Club → any teacher of the section
     expect(a[6].teachers).toHaveLength(2)
     expect(a[7]).toMatchObject({ standard: '11', groupName: 'Science' })
     expect(a[8]).toMatchObject({ mode: 'unassigned', unmatched: ['Z.Unknown'] })
@@ -61,5 +61,47 @@ describe('named allocation', () => {
     expect(tt.violations).toEqual([])
     const kumar = p.staff!.find((s) => s.name === 'A.Kumar')!.id
     expect(tt.lessons.filter((l) => l.teacherId === kumar && l.subject === 'Maths').reduce((s, l) => s + l.count, 0)).toBe(14)
+  })
+
+  it('treats partial groups and Students-sheet alternatives as parallel electives', () => {
+    const T = (n: string, sub: string, d = 'PGT (11-12)') => ['', n, d, sub]
+    const staff = [T('T.Tamil', 'Tamil'), T('T.Eng', 'English'), T('T.Maths', 'Maths'), T('T.Phy', 'Physics'), T('T.Chem', 'Chemistry'), T('T.Bio', 'Biology'),
+      T('T.Cs', 'Computer Science'), T('T.Bot', 'Botany'), T('T.Zoo', 'Zoology'), T('T.Com', 'Commerce'), T('T.Acc', 'Accountancy'), T('T.Eco', 'Economics'), T('T.Bm', 'Maths'), T('T.Pe', 'PET', 'PET')]
+    const H = ['Class', 'Group (Class 11–12 only)', 'Subject', 'Handled By', 'Periods per Week']
+    const p = parseWorkbook([
+      { sheet: 'School Profile', data: [['Field', 'Value'], ['School Name *', 'Test'], ['Board *', 'Matriculation'], ['Working Days per Week', 6], ['Teaching Periods per Day', 8]] as Cell[][] },
+      { sheet: 'Students', data: [['Class', 'Group (Class 11–12 only)', 'Boys', 'Girls'], ['Class 11', 'Maths-Biology', 0, 10], [null, 'Maths-Computer Science', 0, 5], [null, 'Pure Science', 0, 4], ['Class 11', 'Computer Application', 0, 3], [null, 'Business Maths', 0, 2]] as Cell[][] },
+      { sheet: 'Faculty', data: [F, ...staff] as Cell[][] },
+      { sheet: 'Subject Periods', data: [H,
+        ['Class 11', 'Maths-Biology', 'Tamil', 'T.Tamil', 6], [null, null, 'English', 'T.Eng', 6], [null, null, 'Maths', 'T.Maths', 8], [null, null, 'Physics', 'T.Phy', 8],
+        [null, null, 'Chemistry', 'T.Chem', 8], [null, null, 'Biology', 'T.Bio', 8], [null, null, 'PET', 'T.Pe', 4],
+        ['Class 11', 'Maths-Computer Science', 'Computer Science', 'T.Cs', 8],
+        ['Class 11', 'Pure Science', 'Botany', 'T.Bot', 8], [null, null, 'Zoology', 'T.Zoo', 8],
+        ['Class 11', 'Commerce', 'Tamil', 'T.Tamil', 6], [null, null, 'English', 'T.Eng', 6], [null, null, 'Commerce', 'T.Com', 8], [null, null, 'Accountancy', 'T.Acc', 8],
+        [null, null, 'Economics', 'T.Eco', 8], [null, null, 'Computer Application', 'T.Cs', 6], [null, null, 'Business Maths', 'T.Bm', 6], [null, null, 'PET', 'T.Pe', 6],
+      ] as Cell[][] },
+    ], defaultRuleSet)
+    expect(p.issues.filter((i) => i.level === 'error')).toEqual([])
+    const a = p.allocations!
+    const cs = a.find((x) => x.subject === 'Computer Science')!
+    expect(cs).toMatchObject({ groupName: 'Maths-Biology', option: 'Maths-Computer Science', replaces: ['Biology'] })
+    expect(a.find((x) => x.subject === 'Zoology')).toMatchObject({ option: 'Pure Science', replaces: ['Maths', 'Biology'] })
+    expect(a.find((x) => x.subject === 'Business Maths')).toMatchObject({ option: 'Business Maths', replaces: ['Computer Application'] })
+    expect(Object.values(p.hss['11']).map((c) => c.girls).sort()).toEqual([19, 5].sort())
+
+    const data: SchoolData = { strength: p.strength, hss: p.hss, staff: p.staff!, genderSeparate: true, allocations: a, overrides: { daysPerWeek: 6, periodsPerDay: 8, subjectsByStandard: p.subjectsByStandard, hssGroups: p.hssGroups } }
+    const r = analyse({ id: 't', name: 'Test', board: 'MATRIC' }, defaultRuleSet('MATRIC'), data)
+    const secs = r.sections.filter((s) => s.standard === '11')
+    expect(secs.map((s) => [s.label, s.strength, s.weekPeriods])).toEqual([['11 Commerce A', 5, 48], ['11 Maths-Biology A', 19, 48]])
+    const ids = new Set(r.recs.filter((x) => x.status === 'fail').map((x) => x.id))
+    expect(ids.has('alloc-capacity')).toBe(false)
+    expect(ids.has('alloc-groups')).toBe(false)
+    const tt = generateTimetable(r.rules, r.sections, data.staff, { attempts: 4 })
+    expect(tt.violations).toEqual([])
+    expect(tt.unplaced).toEqual([])
+    const mb = secs.find((s) => s.label.includes('Maths-Biology'))!
+    const cells = tt.grid[mb.id].flat().filter((c) => c?.subject.includes('Computer Science'))
+    expect(cells).toHaveLength(8)
+    expect(cells.every((c) => c!.coTeacherIds?.length === 2)).toBe(true) // Biology + CS + Botany/Zoology at once
   })
 })

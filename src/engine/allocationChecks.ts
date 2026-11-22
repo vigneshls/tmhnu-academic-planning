@@ -22,14 +22,16 @@ const families = (subject: string) => FAMILIES.filter(([, re]) => re.test(n(subj
 const CORE = /tamil|english|hindi|sanskrit|french|math|science|physics|chemistry|biology|botany|zoology|evs|social|history|geography|economics|commerce|accountancy|business|computer/
 
 export function teacherLoads(allocs: Allocation[]) {
-  const m = new Map<string, { periods: number; items: string[] }>()
+  /** periods = teaching load; care = supervised non-teaching periods (Sleeping / Snack time) */
+  const m = new Map<string, { periods: number; care: number; items: string[] }>()
   for (const a of allocs) {
     if (a.mode !== 'named') continue
     a.teachers.forEach((id, i) => {
       const p = Math.floor(a.periods / a.teachers.length) + (i < a.periods % a.teachers.length ? 1 : 0)
-      const cur = m.get(id) ?? { periods: 0, items: [] }
-      cur.periods += p
-      cur.items.push(`${a.subject} — ${where(a)} (${p})`)
+      const cur = m.get(id) ?? { periods: 0, care: 0, items: [] }
+      if (a.care) cur.care += p
+      else cur.periods += p
+      cur.items.push(`${a.subject}${a.option && a.option !== a.subject ? ` (${a.option})` : ''} — ${where(a)} (${p}${a.care ? ', supervision' : ''})`)
       m.set(id, cur)
     })
   }
@@ -46,19 +48,32 @@ export function allocationChecks(rules: RuleSet, data: SchoolData, sections: Sec
 
   // 1. week capacity
   const slots = rules.daysPerWeek * rules.periodsPerDay
-  const over = sections.filter((s) => s.allocs && s.subjects.reduce((a, x) => a + x.periods, 0) > slots)
+  const week = (s: Section) => s.weekPeriods ?? s.subjects.reduce((a, x) => a + x.periods, 0)
+  const over = sections.filter((s) => s.allocs && week(s) > slots)
   if (over.length) {
-    const maxP = Math.max(...over.map((s) => s.subjects.reduce((a, x) => a + x.periods, 0)))
+    const maxP = Math.max(...over.map(week))
     const fitDays = Math.ceil(maxP / rules.periodsPerDay)
     out.push({
       id: 'alloc-capacity', status: 'fail', severity: 'critical', area: 'Timetable & workload',
       title: 'Allocated periods do not fit the school week',
       finding: `${over.length} section(s) carry up to ${maxP} periods a week, but the School Profile gives ${rules.daysPerWeek} days × ${rules.periodsPerDay} periods = ${slots}. The timetable cannot place the extra periods.`,
       action: `If the school works ${fitDays} days a week, set "Working Days per Week" to ${fitDays} in the School Profile and re-import. Otherwise reduce the subject periods to ${slots} per section.`,
-      people: over.slice(0, 12).map((s) => `${s.label}: ${s.subjects.reduce((a, x) => a + x.periods, 0)}`),
+      people: over.slice(0, 12).map((s) => `${s.label}: ${week(s)}`),
       source: SOURCES.PLANNING,
     })
   }
+
+  // parallel electives (Class 11–12)
+  const par = sections.filter((s) => s.parallel?.length)
+  if (par.length)
+    out.push({
+      id: 'alloc-electives', status: 'pass', severity: 'low', area: 'Timetable & workload',
+      title: 'Class 11–12 electives are timetabled in parallel',
+      finding: `${par.length} section(s) have elective options taught at the same time by different teachers; the timetable books all of them in the same period.`,
+      action: 'Check the class timetable: each elective period shows every subject and teacher running then.',
+      people: par.map((s) => `${s.label}: ${[...new Set(s.allocs!.filter((a) => a.option).map((a) => a.option))].join(', ')}`),
+      source: SOURCES.PLANNING,
+    })
 
   // 2. periods without a teacher
   const noTeacher = allocs.filter((a) => a.mode !== 'named')
@@ -77,7 +92,7 @@ export function allocationChecks(rules: RuleSet, data: SchoolData, sections: Sec
     out.push({
       id: 'alloc-shared', status: 'fail', severity: 'low', area: 'Timetable & workload',
       title: `${shared.reduce((a, x) => a + x.periods, 0)} "Subject Wise" periods are assigned automatically`,
-      finding: 'These periods (e.g. ECA) go to a teacher of the same section with spare capacity when the timetable is generated.',
+      finding: `These periods (${[...new Set(shared.map((a) => a.subject))].slice(0, 6).join(', ')}) go to a teacher of the same section with spare capacity when the timetable is generated.${shared.some((a) => a.autoShared) ? ' Activity periods with a blank teacher are included.' : ''}`,
       action: 'Check the generated timetable; name a teacher in the workbook if a specific person must take them.',
       source: SOURCES.PLANNING,
     })
@@ -128,6 +143,16 @@ export function allocationChecks(rules: RuleSet, data: SchoolData, sections: Sec
       finding: `${unused.length} teacher(s) appear in Faculty but not in Subject Periods.`,
       action: 'Allocate periods to them, or confirm they are on leave / non-teaching and update their designation.',
       people: unused, source: SOURCES.PLANNING,
+    })
+
+  const careRows = allocs.filter((a) => a.care)
+  if (careRows.length)
+    out.push({
+      id: 'alloc-care', status: 'pass', severity: 'low', area: 'Timetable & workload',
+      title: 'Supervision periods kept apart from teaching load',
+      finding: `${[...new Set(careRows.map((a) => a.subject))].join(', ')} (${careRows.reduce((s, a) => s + a.periods, 0)} periods a week) are scheduled with the named teacher but not counted against the teaching-period limits.`,
+      action: 'Arrange an ayah / helper for these periods where possible, so the teacher can prepare or take other duties.',
+      source: SOURCES.PLANNING,
     })
 
   // 4. out-of-field teaching (academic subjects only)

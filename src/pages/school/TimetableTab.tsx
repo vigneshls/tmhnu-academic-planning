@@ -88,7 +88,7 @@ function Status({ tt, rules, stale }: { tt: TimetableResult; rules: RuleSet; sta
         {violations.length ? `✗ ${violations.length} rule violation(s): ${violations.slice(0, 3).join('; ')}` : `✓ All hard rules met (no clashes, max ${rules.maxConsecutive} continuous periods, daily/weekly limits)`}
       </p>
       <p className={missing ? 'text-red-600' : 'text-emerald-700'}>
-        {missing ? `✗ ${missing} period(s) could not be placed: ${tt.unplaced.slice(0, 5).map((u) => u.lessonId.replace('|', ' – ')).join(', ')}` : '✓ Every subject got its full weekly periods'}
+        {missing ? `✗ ${missing} period(s) could not be placed: ${tt.unplaced.slice(0, 5).map((u) => { const l = tt.lessons.find((x) => x.id === u.lessonId); const sec = tt.sections.find((x) => x.id === l?.sectionId); const t = tt.teachers.find((x) => x.id === l?.teacherId); return `${sec?.label ?? ''} ${l?.subject ?? ''}${t ? ` (${t.name})` : ''} ×${u.remaining}` }).join(', ')}. The teacher has no free period left that matches the section; try Generate again or move one period to another teacher.`` : '✓ Every subject got its full weekly periods'}
       </p>
       {vac.length > 0 && <p className="text-amber-700">⚠ {vac.length} vacancy placeholder(s): {vac.map((v) => v.name).join(', ')}</p>}
       <p className="text-xs text-slate-500">Generated {new Date(tt.generatedAt).toLocaleString()} · placement score {tt.softScore}</p>
@@ -124,10 +124,11 @@ function ClassGrid({ tt, rules, sectionId, title }: { tt: TimetableResult; rules
                 <th>{DAY_NAMES[d] ?? `D${d + 1}`}</th>
                 {heads.map((h) => {
                   const c = row[h.p]
-                  const t = c?.teacherId ? tName.get(c.teacherId) : null
+                  const ts = c?.teacherId ? [c.teacherId, ...(c.coTeacherIds ?? [])].map((id) => tName.get(id)) : []
+                  const t = ts[0] ?? null
                   return [
                     <td key={h.p} className={c ? colorFor(c.subject) : 'bg-red-50'}>
-                      {c ? (<><div className="font-medium">{c.subject}</div><div className={`text-[10px] ${t?.vacancy ? 'text-red-600' : 'text-slate-600'}`}>{t?.name ?? ''}</div></>) : <span className="text-red-500">—</span>}
+                      {c ? (<><div className="font-medium">{c.subject}</div><div className={`text-[10px] ${t?.vacancy ? 'text-red-600' : 'text-slate-600'}`}>{ts.map((x) => x?.name).join(' / ')}</div></>) : <span className="text-red-500">—</span>}
                     </td>,
                     h.after ? <td key={h.p + 'b'} className="bg-slate-100" /> : null,
                   ]
@@ -149,7 +150,7 @@ function TeacherGrid({ tt, rules, teacherId, title }: { tt: TimetableResult; rul
   const at = (d: number, p: number) => {
     for (const s of tt.sections) {
       const c = tt.grid[s.id][d][p]
-      if (c?.teacherId === t.id) return { s, c }
+      if (c && (c.teacherId === t.id || c.coTeacherIds?.includes(t.id))) return { s, c }
     }
     return null
   }
@@ -190,6 +191,6 @@ function exportCsv(tt: TimetableResult) {
   const tName = new Map(tt.teachers.map((t) => [t.id, t.name]))
   const rows: unknown[][] = [['Section', 'Day', ...Array.from({ length: tt.periods }, (_, p) => `P${p + 1}`)]]
   for (const s of tt.sections)
-    tt.grid[s.id].forEach((row, d) => rows.push([s.label, DAY_NAMES[d] ?? d + 1, ...row.map((c) => (c ? `${c.subject}${c.teacherId ? ' / ' + tName.get(c.teacherId) : ''}` : ''))]))
+    tt.grid[s.id].forEach((row, d) => rows.push([s.label, DAY_NAMES[d] ?? d + 1, ...row.map((c) => (c ? `${c.subject}${c.teacherId ? ' / ' + [c.teacherId, ...(c.coTeacherIds ?? [])].map((id) => tName.get(id)).join(' + ') : ''}` : ''))]))
   downloadCsv('timetable.csv', rows)
 }

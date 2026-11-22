@@ -1,6 +1,7 @@
 import { stageOf } from '../../engine/rules'
 import type { Allocation, Board, ComplianceEntry, GenderCount, HssGroup, RuleSet, SchoolProfile, Staff, SubjectAlloc } from '../../engine/types'
 import { isSharedWord, makeMatcher, splitNames } from './names'
+import { ACTIVITY_RE, CARE_RE, applyStreams, scanStudentGroups, weekPeriodsOf } from './streams'
 import { parseFacultyRows, type Cell } from '../facultyExcel'
 import { CLASS_LABELS, COMPLIANCE_HEADERS, HANDLED_BY, PREF_TIME, PROFILE_FIELDS, SHEETS, STUDENT_HEADERS, classKey, classLabel, slug } from './spec'
 
@@ -228,6 +229,7 @@ export function parseWorkbook(sheets: { sheet: string; data: Cell[][] }[], defau
           const pref = ({ [k(PREF_TIME[0])]: 'morning', [k(PREF_TIME[1])]: 'afternoon', [k(PREF_TIME[2])]: 'last' } as Record<string, SubjectAlloc['pref']>)[pt] ?? model?.pref ?? 'any'
           const cell = cTeacher >= 0 ? text(r[cTeacher]) : ''
           const a: Allocation = { standard: std, groupId, groupName, section, subject, periods, pref, teachers: [], mode: 'unassigned' }
+          if (CARE_RE.test(subject)) a.care = true
           if (cell && isSharedWord(cell)) a.mode = 'shared'
           else if (cell) {
             for (const nm of splitNames(cell)) {
@@ -236,11 +238,18 @@ export function parseWorkbook(sheets: { sheet: string; data: Cell[][] }[], defau
               else { (a.unmatched ??= []).push(nm); unknown.set(nm, [...(unknown.get(nm) ?? []), row]) }
             }
             a.mode = a.teachers.length ? 'named' : 'unassigned'
-          }
+          } else if (ACTIVITY_RE.test(subject)) { a.mode = 'shared'; a.autoShared = true }
           allocs.push(a)
         })
         for (const [written, matched] of fixes) { out.nameFixes.push({ written, matched }); warn(SHEETS.subjects, `"${written}" matched to faculty "${matched}" (spelling differs).`, undefined, 'Teacher Name(s)') }
         for (const [nm, rows] of unknown) warn(SHEETS.subjects, `"${nm}" is not in the Faculty sheet (rows ${rows.slice(0, 6).join(', ')}${rows.length > 6 ? '…' : ''}). Add the teacher or correct the spelling.`, rows[0], 'Teacher Name(s)')
+        // Class 11–12 streams and parallel electives
+        const stuRows = get(SHEETS.students)
+        for (const n of applyStreams(allocs, stuRows ? scanStudentGroups(stuRows, classKey) : new Map(), groupIdByName)) warn(SHEETS.subjects, n.message)
+        const auto = allocs.filter((a) => a.autoShared)
+        if (auto.length) warn(SHEETS.subjects, `${auto.length} activity row(s) with no teacher (${[...new Set(auto.map((a) => a.subject))].join(', ')}) are given to a teacher of the same section automatically. Name a teacher if a specific person must take them.`)
+        const care = allocs.filter((a) => a.care)
+        if (care.length) warn(SHEETS.subjects, `${[...new Set(care.map((a) => a.subject))].join(', ')} (${care.reduce((s, a) => s + a.periods, 0)} periods) treated as supervision: kept in the timetable, not counted as teaching load.`)
         if (allocs.length) {
           // Only a sheet that names teachers is a real allocation; a blank model sheet just sets subject periods
           if (allocs.some((a) => a.mode === 'named')) out.allocations = allocs
@@ -263,8 +272,9 @@ export function parseWorkbook(sheets: { sheet: string; data: Cell[][] }[], defau
           if (groups.size) out.hssGroups = [...groups.values()]
           // Weekly totals per section
           const slots = (out.daysPerWeek ?? base.daysPerWeek) * (out.periodsPerDay ?? base.periodsPerDay)
-          const tot = new Map<string, number>()
-          for (const a of allocs) { const kk = `${classLabel(a.standard)}${a.groupName ? ' ' + a.groupName : ''} ${a.section}`; tot.set(kk, (tot.get(kk) ?? 0) + a.periods) }
+          const bySec = new Map<string, Allocation[]>()
+          for (const a of allocs) { const kk = `${classLabel(a.standard)}${a.groupName ? ' ' + a.groupName : ''} ${a.section}`; bySec.set(kk, [...(bySec.get(kk) ?? []), a]) }
+          const tot = new Map([...bySec].map(([kk, list]) => [kk, weekPeriodsOf(list)]))
           const over = [...tot].filter(([, v]) => v > slots)
           if (over.length) warn(SHEETS.subjects, `${over.length} section(s) have more periods than the week allows (${slots} = ${out.daysPerWeek ?? base.daysPerWeek} days × ${out.periodsPerDay ?? base.periodsPerDay} periods), e.g. ${over.slice(0, 3).map(([kk, v]) => `${kk}: ${v}`).join('; ')}. Check Working Days per Week in School Profile.`)
         }

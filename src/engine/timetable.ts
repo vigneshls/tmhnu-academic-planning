@@ -2,6 +2,7 @@ import { CLASS_TEACHER, teacherCategoryFor } from './calc'
 import { blocks, categoryForStage, effectiveLimits, isClassTeacherStage } from './rules'
 import type { Cell, Category, Lesson, RuleSet, Section, Staff, TeacherRef, TimetableResult } from './types'
 import { isTeachingCategory } from './types'
+import { splitParallel } from './parallel'
 
 const norm = (x: string) => x.trim().toLowerCase()
 
@@ -63,21 +64,33 @@ export function assignTeachers(rules: RuleSet, sections: Section[], staff: Staff
   // 1) class teachers (pre-primary & primary)
   // 0) sections with the school's own allocation — named periods first, then shared ones fill spare capacity
   const allocSecs = sections.filter((s) => s.allocs)
+  const restOf = new Map(allocSecs.map((sec) => {
+    const sp = splitParallel(sec.allocs!)
+    sp.blocks.forEach((b, i) => {
+      const ids = [...new Set(b.lanes.map((l) => l.teacherId).filter((x): x is string => !!x))]
+      for (const id of ids) load.set(id, (load.get(id) ?? 0) + b.count)
+      lessons.push({
+        id: `${sec.id}|P${i}`, sectionId: sec.id, subject: [...new Set(b.lanes.map((l) => l.subject))].join(' / '),
+        teacherId: ids[0] ?? null, ...(ids.length > 1 ? { coTeacherIds: ids.slice(1) } : {}), count: b.count, pref: 'any',
+      })
+    })
+    return [sec.id, sp.rest] as const
+  }))
   for (const sec of allocSecs)
-    for (const a of sec.allocs!) {
+    for (const a of restOf.get(sec.id)!) {
       if (a.mode !== 'named') continue
       a.teachers.forEach((id, i) => {
         const n = Math.floor(a.periods / a.teachers.length) + (i < a.periods % a.teachers.length ? 1 : 0)
-        if (n > 0) { load.set(id, (load.get(id) ?? 0) + n); lessons.push({ id: `${sec.id}|${a.subject}|${id}`, sectionId: sec.id, subject: a.subject, teacherId: id, count: n, pref: a.pref }) }
+        if (n > 0) { load.set(id, (load.get(id) ?? 0) + n); lessons.push({ id: `${sec.id}|${a.subject}|${id}#${lessons.length}`, sectionId: sec.id, subject: a.subject, teacherId: id, count: n, pref: a.pref }) }
       })
     }
   for (const sec of allocSecs) {
     const mine = [...new Set(sec.allocs!.filter((a) => a.mode === 'named').flatMap((a) => a.teachers))].map((id) => byId.get(id)!).filter(Boolean)
-    for (const a of sec.allocs!) {
+    for (const a of restOf.get(sec.id)!) {
       if (a.mode === 'named') continue
       const t = pick(mine, a.periods) ?? vacancy(teacherCategoryFor(sec, {}), a.mode === 'shared' ? `${a.subject} (shared)` : `${a.subject} (unassigned)`, a.periods)
       load.set(t.id, (load.get(t.id) ?? 0) + a.periods)
-      lessons.push({ id: `${sec.id}|${a.subject}|${t.id}`, sectionId: sec.id, subject: a.subject, teacherId: t.id, count: a.periods, pref: a.pref })
+      lessons.push({ id: `${sec.id}|${a.subject}|${t.id}#${lessons.length}`, sectionId: sec.id, subject: a.subject, teacherId: t.id, count: a.periods, pref: a.pref })
     }
   }
   for (const sec of sections) {
@@ -178,6 +191,7 @@ export function generateTimetable(
     return 0
   }
 
+  const teachersOf = (l: { teacherId: string | null; coTeacherIds?: string[] }) => (l.teacherId ? [l.teacherId, ...(l.coTeacherIds ?? [])] : [])
   const canTeach = (st: State, tid: string, d: number, p: number) => {
     const t = tById.get(tid)!
     const b = st.busy.get(tid)!
@@ -189,23 +203,24 @@ export function generateTimetable(
     return run <= rules.maxConsecutive
   }
 
+  const canTeachAll = (st: State, l: Lesson, d: number, p: number) => teachersOf(l).every((t) => canTeach(st, t, d, p))
   const place = (st: State, l: Lesson, d: number, p: number) => {
-    st.grid[l.sectionId][d][p] = { lessonId: l.id, subject: l.subject, teacherId: l.teacherId }
+    st.grid[l.sectionId][d][p] = { lessonId: l.id, subject: l.subject, teacherId: l.teacherId, ...(l.coTeacherIds ? { coTeacherIds: l.coTeacherIds } : {}) }
     st.rem.set(l.id, st.rem.get(l.id)! - 1)
-    if (l.teacherId) {
-      st.busy.get(l.teacherId)![d][p] = true
-      st.dayCount.get(l.teacherId)![d]++
-      st.where.get(l.teacherId)![d][p] = l.sectionId
+    for (const t of teachersOf(l)) {
+      st.busy.get(t)![d][p] = true
+      st.dayCount.get(t)![d]++
+      st.where.get(t)![d][p] = l.sectionId
     }
   }
   const unplace = (st: State, d: number, p: number, secId: string) => {
     const c = st.grid[secId][d][p]!
     st.grid[secId][d][p] = null
     st.rem.set(c.lessonId, st.rem.get(c.lessonId)! + 1)
-    if (c.teacherId) {
-      st.busy.get(c.teacherId)![d][p] = false
-      st.dayCount.get(c.teacherId)![d]--
-      st.where.get(c.teacherId)![d][p] = ''
+    for (const t of teachersOf(c)) {
+      st.busy.get(t)![d][p] = false
+      st.dayCount.get(t)![d]--
+      st.where.get(t)![d][p] = ''
     }
     return lById.get(c.lessonId)!
   }
@@ -223,7 +238,23 @@ export function generateTimetable(
       where: new Map(teachers.map((t) => [t.id, Array.from({ length: D }, () => Array(P).fill(''))])),
     }
     const tRem = new Map<string, number>()
-    for (const l of lessons) if (l.teacherId) tRem.set(l.teacherId, (tRem.get(l.teacherId) ?? 0) + l.count)
+    for (const l of lessons) for (const t of teachersOf(l)) tRem.set(t, (tRem.get(t) ?? 0) + l.count)
+
+    // parallel electives first: every teacher of the block must be free in the same period; these cells are then locked
+    const locked = new Set<string>()
+    const allSlots: [number, number][] = []
+    for (let d = 0; d < D; d++) for (let p = 0; p < P; p++) allSlots.push([d, p])
+    const shuffled = () => allSlots.map((x) => [r(), x] as const).sort((a, b) => a[0] - b[0]).map(([, x]) => x)
+    const blockLessons = lessons.filter((l) => l.coTeacherIds?.length).sort((a, b) => b.count - a.count)
+    for (const l of blockLessons)
+      for (const relax of [0, 1, P])
+        for (const [d, p] of shuffled()) {
+          if (st.rem.get(l.id)! <= 0) break
+          if (st.grid[l.sectionId][d][p] || subjectDayCount(st, l, d) >= Math.ceil(l.count / D) + relax || !canTeachAll(st, l, d, p)) continue
+          place(st, l, d, p)
+          locked.add(`${l.sectionId}|${d}|${p}`)
+          for (const t of teachersOf(l)) tRem.set(t, tRem.get(t)! - 1)
+        }
 
     for (let d = 0; d < D; d++) {
       for (let p = 0; p < P; p++) {
@@ -231,7 +262,7 @@ export function generateTimetable(
         // candidates per section
         const cands = new Map<string, { l: Lesson; score: number }[]>()
         for (const sec of sections) {
-          const ls = (bySection.get(sec.id) ?? []).filter((l) => st.rem.get(l.id)! > 0)
+          const ls = st.grid[sec.id][d][p] ? [] : (bySection.get(sec.id) ?? []).filter((l) => st.rem.get(l.id)! > 0 && !l.coTeacherIds?.length)
           const build = (relax: number) =>
             ls
               .filter((l) => subjectDayCount(st, l, d) < Math.ceil(l.count / D) + relax)
@@ -290,9 +321,19 @@ export function generateTimetable(
       queue.splice(qi, 1)
       if (st.rem.get(l.id)! <= 0) continue
       const g = st.grid[l.sectionId]
+      if (l.coTeacherIds?.length) {
+        // a parallel block may only move into a period where all its teachers are already free
+        const spot = shuffled().find(([d, p]) => !locked.has(`${l.sectionId}|${d}|${p}`) && g[d][p]?.lessonId !== l.id && canTeachAll(st, l, d, p))
+        if (!spot) continue
+        const [d, p] = spot
+        if (g[d][p]) queue.push(unplace(st, d, p, l.sectionId))
+        place(st, l, d, p)
+        locked.add(`${l.sectionId}|${d}|${p}`)
+        continue
+      }
       let bestOpt: { d: number; p: number; kicks: [string, number, number][]; cost: number } | null = null
       for (let d = 0; d < D; d++) for (let p = 0; p < P; p++) {
-        if (g[d][p]?.lessonId === l.id) continue
+        if (g[d][p]?.lessonId === l.id || locked.has(`${l.sectionId}|${d}|${p}`)) continue
         const kicks: [string, number, number][] = []
         if (g[d][p]) kicks.push([l.sectionId, d, p])
         if (l.teacherId) {
@@ -325,6 +366,7 @@ export function generateTimetable(
             cnt--
           }
         }
+        if (kicks.some(([s, kd, kp]) => locked.has(`${s}|${kd}|${kp}`))) continue
         let cost = kicks.length + r() * 0.5
         for (const [s, kd, kp] of kicks) if (it - (placedAt.get(`${s}|${kd}|${kp}`) ?? -99) < 8) cost += 5
         cost -= prefScore(l.pref, p) * 0.1
@@ -391,9 +433,10 @@ export function validateTimetable(rules: RuleSet, tt: TimetableResult): string[]
       const c = tt.grid[sec.id][d][p]
       if (!c) continue
       counts.set(c.lessonId, (counts.get(c.lessonId) ?? 0) + 1)
-      if (!c.teacherId) continue
-      if (!occ.has(c.teacherId)) occ.set(c.teacherId, Array.from({ length: D }, () => Array.from({ length: P }, () => [] as string[])))
-      occ.get(c.teacherId)![d][p].push(sec.label)
+      for (const tid of c.teacherId ? [c.teacherId, ...(c.coTeacherIds ?? [])] : []) {
+        if (!occ.has(tid)) occ.set(tid, Array.from({ length: D }, () => Array.from({ length: P }, () => [] as string[])))
+        occ.get(tid)![d][p].push(sec.label)
+      }
     }
   }
   for (const l of tt.lessons) {
@@ -423,6 +466,6 @@ export function validateTimetable(rules: RuleSet, tt: TimetableResult): string[]
 
 export function teacherLoad(tt: TimetableResult) {
   const m = new Map<string, number>()
-  for (const sec of tt.sections) for (const day of tt.grid[sec.id]) for (const c of day) if (c?.teacherId) m.set(c.teacherId, (m.get(c.teacherId) ?? 0) + 1)
+  for (const sec of tt.sections) for (const day of tt.grid[sec.id]) for (const c of day) if (c?.teacherId) for (const t of [c.teacherId, ...(c.coTeacherIds ?? [])]) m.set(t, (m.get(t) ?? 0) + 1)
   return m
 }

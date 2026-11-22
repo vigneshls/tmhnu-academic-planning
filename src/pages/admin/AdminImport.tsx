@@ -5,10 +5,11 @@ import { store } from '../../data/store'
 import { effectiveRules } from '../../engine/effective'
 import { checklist } from '../../engine/recommend'
 import { BOARD_LABEL, defaultRuleSet } from '../../engine/rules'
-import type { Board, RuleSet, School, SchoolData } from '../../engine/types'
+import type { Allocation, Board, RuleSet, School, SchoolData } from '../../engine/types'
 import type { Cell } from '../../lib/facultyExcel'
 import { parseWorkbook, type WorkbookData } from '../../lib/workbook/parse'
 import { SHEETS } from '../../lib/workbook/spec'
+import { weekPeriodsOf } from '../../lib/workbook/streams'
 import { Badge, Button, Card, Icon, Kpi, PageHeader, cx } from '../../ui/kit'
 
 const MAX_BYTES = 8 * 1024 * 1024
@@ -146,6 +147,23 @@ export default function AdminImport() {
                     )
                   })}
                 </div>
+                {(() => {
+                  if (!parsed.allocations?.length || !school) return null
+                  const base = rules?.[parsed.board ?? school.board] ?? defaultRuleSet(parsed.board ?? school.board)
+                  const days = parsed.daysPerWeek ?? base.daysPerWeek
+                  const ppd = parsed.periodsPerDay ?? base.periodsPerDay
+                  const bySec = new Map<string, Allocation[]>()
+                  for (const a of parsed.allocations) { const kk = `${a.standard}|${a.groupId ?? ''}|${a.section}`; bySec.set(kk, [...(bySec.get(kk) ?? []), a]) }
+                  const max = Math.max(...[...bySec.values()].map(weekPeriodsOf))
+                  const need = Math.ceil(max / ppd)
+                  if (max <= days * ppd || need > 6) return null
+                  return (
+                    <div className="flex flex-wrap items-center gap-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+                      <span>Sections carry up to <b>{max}</b> periods a week, but the School Profile says {days} days × {ppd} periods = {days * ppd}. The school appears to work <b>{need} days</b>.</span>
+                      <Button className="ml-auto" onClick={() => setParsed({ ...parsed, daysPerWeek: need, issues: parsed.issues.filter((i) => !/more periods than the week allows/.test(i.message)) })}>Use {need} working days</Button>
+                    </div>
+                  )
+                })()}
                 {parsed.issues.length > 0 && (
                   <div className="max-h-72 overflow-auto rounded-lg border border-slate-200">
                     <table className="w-full text-sm">
