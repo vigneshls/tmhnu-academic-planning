@@ -44,7 +44,7 @@ export default function Dashboard() {
             const top = a.recs.filter((r) => r.status === 'fail').slice(0, 3)
             return (
               <Card key={school.id}>
-                <div className="flex gap-5">
+                <div className="flex flex-col gap-4 sm:flex-row sm:gap-5">
                   <ScoreRing pct={a.score.pct} size={96} label="Checks passed" />
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">

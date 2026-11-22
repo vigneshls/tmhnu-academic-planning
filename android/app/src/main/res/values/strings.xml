@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">TMHNU Schools</string>
+    <string name="title_activity_main">TMHNU Schools</string>
+    <string name="package_name">in.tmhnu.schools</string>
+    <string name="custom_url_scheme">in.tmhnu.schools</string>
+</resources>

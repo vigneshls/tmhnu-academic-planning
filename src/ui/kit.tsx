@@ -7,7 +7,7 @@ export function PageHeader({ title, subtitle, actions, eyebrow }: { title: React
     <div className="mb-6 flex flex-wrap items-end gap-4">
       <div className="min-w-0">
         {eyebrow && <div className="mb-1 text-xs font-semibold uppercase tracking-wider text-teal-700">{eyebrow}</div>}
-        <h1 className="text-2xl font-semibold tracking-tight text-slate-900">{title}</h1>
+        <h1 className="text-xl font-semibold tracking-tight text-slate-900 sm:text-2xl">{title}</h1>
         {subtitle && <p className="mt-1 text-sm text-slate-500">{subtitle}</p>}
       </div>
       {actions && <div className="no-print ml-auto flex flex-wrap items-center gap-2">{actions}</div>}
@@ -17,7 +17,7 @@ export function PageHeader({ title, subtitle, actions, eyebrow }: { title: React
 
 export function Card({ title, subtitle, actions, children, className, pad = true }: { title?: ReactNode; subtitle?: ReactNode; actions?: ReactNode; children: ReactNode; className?: string; pad?: boolean }) {
   return (
-    <section className={cx('rounded-xl border border-slate-200/80 bg-white shadow-[0_1px_2px_rgba(15,39,68,0.04)]', className)}>
+    <section className={cx('min-w-0 rounded-xl border border-slate-200/80 bg-white shadow-[0_1px_2px_rgba(15,39,68,0.04)]', className)}>
       {(title || actions) && (
         <div className="flex flex-wrap items-center gap-3 border-b border-slate-100 px-5 py-4">
           <div>
@@ -27,7 +27,7 @@ export function Card({ title, subtitle, actions, children, className, pad = true
           {actions && <div className="no-print ml-auto flex items-center gap-2">{actions}</div>}
         </div>
       )}
-      <div className={pad ? 'p-5' : ''}>{children}</div>
+      <div className={pad ? 'p-4 sm:p-5' : 'overflow-x-auto'}>{children}</div>
     </section>
   )
 }

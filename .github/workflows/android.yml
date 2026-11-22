@@ -1,0 +1,44 @@
+name: Build Android app
+on:
+  push:
+    branches: [main]
+    paths: ['android/**', 'capacitor.config.ts', 'package.json', 'package-lock.json', 'public/offline.html', '.github/workflows/android.yml']
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: android
+  cancel-in-progress: true
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - run: npx cap sync android
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: 21
+          cache: gradle
+      - name: Build APK
+        working-directory: android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon
+          cp app/build/outputs/apk/debug/app-debug.apk ../TMHNU-Schools.apk
+      - name: Publish to Releases
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: android-v${{ github.run_number }}
+          name: TMHNU Schools — Android ${{ github.run_number }}
+          make_latest: true
+          files: TMHNU-Schools.apk
+          body: |
+            Android app for TMHNU Schools. Download **TMHNU-Schools.apk** below, open it on the phone and allow "Install unknown apps" when asked.
+            The app opens the live site, so later updates of the website appear in the app automatically.
