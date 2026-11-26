@@ -85,7 +85,7 @@ export default function SchoolPage() {
       ] as const} />
       {tab === 'overview' && <OverviewTab school={school} data={data} a={a} goTo={setTab} />}
       {tab === 'students' && <StrengthTab rules={a.rules} data={data} sections={a.sections} onChange={update} />}
-      {tab === 'allocation' && <AllocationTab rules={a.rules} data={data} sections={a.sections} />}
+      {tab === 'allocation' && <AllocationTab rules={a.rules} data={a.data} sections={a.sections} />}
       {tab === 'staffing' && (a.staffing ? <StaffingTab rules={a.rules} staffing={a.staffing} summary={a.summary} /> : <RequirementTab rules={a.rules} sections={a.sections} demand={a.demand} summary={a.summary} />)}
       {tab === 'faculty' && <FacultyTab rules={a.rules} data={data} isAdmin={isAdmin} schoolId={school.id} />}
       {tab === 'timetable' && <TimetableTab rules={a.rules} school={school} data={data} sections={a.sections} onChange={update} />}

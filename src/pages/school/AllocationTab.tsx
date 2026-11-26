@@ -86,7 +86,7 @@ export default function AllocationTab({ rules, data, sections }: { rules: RuleSe
             const sum = sec.weekPeriods ?? sec.allocs!.reduce((a, x) => a + x.periods, 0)
             const slots = rules.daysPerWeek * rules.periodsPerDay
             return (
-              <Card key={sec.id} title={`Class ${sec.label}`} subtitle={`${sec.strength} students`} actions={<Badge tone={sum > slots ? 'critical' : sum < slots ? 'medium' : 'pass'}>{sum}/{slots} periods</Badge>} pad={false}>
+              <Card key={sec.id} title={`Class ${sec.label}`} subtitle={`${sec.strength} students${sec.allocs?.some((x) => x.autoSplit) ? ' · new Girls section created by the app (same subjects and teachers as the Boys section)' : ''}`} actions={<Badge tone={sum > slots ? 'critical' : sum < slots ? 'medium' : 'pass'}>{sum}/{slots} periods</Badge>} pad={false}>
                 <table className="w-full text-sm">
                   <tbody>
                     {sec.allocs!.map((a, i) => (

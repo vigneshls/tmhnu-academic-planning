@@ -120,7 +120,13 @@ describe('named allocation', () => {
     const data: SchoolData = { strength: p.strength, hss: p.hss, staff: p.staff!, genderSeparate: true, allocations: p.allocations }
     const r = analyse({ id: 't', name: 'T', board: 'MATRIC' }, defaultRuleSet('MATRIC'), data)
     expect(r.sections.filter((s) => s.standard !== '7').map((s) => [s.label, s.strength])).toEqual([['6 A (Girls)', 28], ['6 B (Boys)', 30]])
-    expect(r.sections.find((s) => s.standard === '7')!.label).toBe('7 A (Mixed)')
-    expect(r.recs.find((x) => x.id === 'alloc-gender')).toMatchObject({ status: 'fail', people: ['7 A (Mixed): 12 boys + 15 girls'] })
+    // Class 7 had boys and girls in one section: split into 7 A (Boys) and 7 B (Girls) with the same subjects and teacher
+    expect(r.sections.filter((s) => s.standard === '7').map((s) => [s.label, s.strength, s.subjects.map((x) => x.subject).join()])).toEqual([['7 A (Boys)', 12, 'Maths'], ['7 B (Girls)', 15, 'Maths']])
+    expect(r.recs.find((x) => x.id === 'gender-split')).toMatchObject({ people: ['7 A (Boys) — 12', '7 B (Girls) — 15'] })
+    expect(r.recs.find((x) => x.id === 'alloc-gender')).toMatchObject({ status: 'pass' })
+    expect(r.data.allocations!.filter((a) => a.standard === '7').map((a) => [a.section, a.gender, a.teachers.length])).toEqual([['A', 'B', 1], ['B', 'G', 1]])
+    // with separate sections switched off, the class stays one mixed section
+    const mixed = analyse({ id: 't', name: 'T', board: 'MATRIC' }, defaultRuleSet('MATRIC'), { ...data, genderSeparate: false })
+    expect(mixed.sections.filter((s) => s.standard === '7').map((s) => s.label)).toEqual(['7 A'])
   })
 })

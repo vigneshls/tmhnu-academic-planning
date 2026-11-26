@@ -154,6 +154,8 @@ export interface Allocation {
   autoShared?: boolean
   /** Boys / Girls section, when written in the Section cell (e.g. "A (Boys)") */
   gender?: 'B' | 'G'
+  /** Added by the app: Girls section created from a mixed section (same subjects and teachers) */
+  autoSplit?: boolean
 }
 
 /** Electives taught at the same time to different students of one section */

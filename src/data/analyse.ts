@@ -1,12 +1,15 @@
 import { buildSections, computeDemand, summarize } from '../engine/calc'
 import { effectiveRules } from '../engine/effective'
+import { splitGenderSections } from '../engine/genderSplit'
 import { recommend, score, type Recommendation } from '../engine/recommend'
 import { SOURCES } from '../engine/sources'
 import { subjectStaffing } from '../engine/staffing'
 import type { RuleSet, School, SchoolData } from '../engine/types'
 
 /** One place that turns stored data into everything the screens show */
-export function analyse(school: School, boardRules: RuleSet, data: SchoolData) {
+export function analyse(school: School, boardRules: RuleSet, stored: SchoolData) {
+  // Separate Boys / Girls sections from Class 6 when the school asks for it (mixed sections are split)
+  const { data, split } = splitGenderSections(stored)
   const rules = effectiveRules(boardRules, data)
   const sections = buildSections(rules, data)
   const demand = computeDemand(rules, sections, data.staff)
@@ -23,7 +26,16 @@ export function analyse(school: School, boardRules: RuleSet, data: SchoolData) {
   }
   const recs = recommend({ board: school.board, rules, data, sections, demand, summary })
   if (staffing) recs.push(...staffingRecs(staffing))
-  return { rules, sections, demand, summary, staffing, recs, score: score(recs) }
+  if (split.length)
+    recs.push({
+      id: 'gender-split', status: 'fail', severity: 'medium', area: 'Class size & ratios',
+      title: 'Boys and Girls sections created',
+      finding: `${split.map((x) => `Class ${x.cls}`).join(', ')}: boys and girls were in one section; the app now plans separate Boys and Girls sections with the same subjects and teachers (${split.reduce((a, x) => a + x.periods, 0)} more periods a week).`,
+      action: 'Check Staffing and Teacher Allocation for the extra load, assign other teachers where someone is over the limit, then generate the timetable. To keep a class mixed, untick “Separate boys and girls sections” on the Students tab.',
+      people: split.flatMap((x) => [x.boys, x.girls]),
+      source: SOURCES.PLANNING,
+    })
+  return { data, rules, sections, demand, summary, staffing, recs, score: score(recs) }
 }
 export type Analysis = ReturnType<typeof analyse>
 
