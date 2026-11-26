@@ -235,27 +235,58 @@ function sectionsFromAllocations(rules: RuleSet, data: SchoolData): Section[] {
   }
   for (const [ck, keys] of classSecs) {
     const [std, gid] = ck.split('|')
-    const c = gid ? data.hss[std]?.[gid] : data.strength[std]
-    const total = c ? c.boys + c.girls : 0
-    const sizes = split(total, keys.length)
-    keys.sort().forEach((key, i) => {
+    const c = (gid ? data.hss[std]?.[gid] : data.strength[std]) ?? { boys: 0, girls: 0 }
+    keys.sort()
+    // Gender of each section: written by the school ("A (Boys)"), else worked out from the counts
+    const split6 = data.genderSeparate && Number(std) >= 6
+    const g = new Map<string, Section['gender']>()
+    let inferred = false
+    for (const key of keys) { const w = bySec.get(key)!.find((a) => a.gender)?.gender; if (w) g.set(key, w) }
+    const open = keys.filter((k) => !g.has(k))
+    if (open.length) {
+      if (c.boys > 0 && c.girls === 0) open.forEach((k) => g.set(k, 'B'))
+      else if (c.girls > 0 && c.boys === 0) open.forEach((k) => g.set(k, 'G'))
+      else if (split6 && open.length >= 2 && c.boys + c.girls > 0) {
+        // both genders, several sections, nothing written: give boys / girls sections in proportion (boys first)
+        const nb = Math.min(open.length - 1, Math.max(1, Math.round((open.length * c.boys) / (c.boys + c.girls))))
+        open.forEach((k, i) => g.set(k, i < nb ? 'B' : 'G'))
+        inferred = true
+      } else open.forEach((k) => g.set(k, 'C'))
+      if (c.boys === 0 || c.girls === 0) inferred = false
+    }
+    // strength: each gender's count shared by its sections; mixed sections share the rest
+    const nOf = (x: Section['gender']) => keys.filter((k) => g.get(k) === x).length
+    const nb = nOf('B'), ng = nOf('G'), nc = nOf('C')
+    const boysLeft = nb ? 0 : c.boys, girlsLeft = ng ? 0 : c.girls
+    const bSizes = split(c.boys, nb || 1), gSizes = split(c.girls, ng || 1)
+    const cSizes = split(boysLeft + girlsLeft, nc || 1)
+    const cb = split(boysLeft, nc || 1), cg = split(girlsLeft, nc || 1)
+    const idx = { B: 0, G: 0, C: 0 }
+    for (const key of keys) {
       const list = bySec.get(key)!
       const a0 = list[0]
       const sp = splitParallel(list)
+      const gender = g.get(key)!
+      const i = idx[gender]++
+      const strength = gender === 'B' ? bSizes[i] : gender === 'G' ? gSizes[i] : cSizes[i]
+      const gTxt = gender === 'B' ? ' (Boys)' : gender === 'G' ? ' (Girls)' : split6 && Number(std) >= 6 ? ' (Mixed)' : ''
       out.push({
         id: `${std}-${gid || 'X'}-${a0.section}`,
         standard: std,
         stage: stageOf(std),
         groupId: gid || undefined,
-        gender: 'C',
-        label: `${std}${a0.groupName ? ' ' + a0.groupName : ''} ${a0.section}`,
-        strength: sizes[i] ?? 0,
+        gender,
+        ...(inferred && open.includes(key) ? { genderInferred: true } : {}),
+        boys: gender === 'B' ? strength : gender === 'G' ? 0 : cb[i] ?? 0,
+        girls: gender === 'G' ? strength : gender === 'B' ? 0 : cg[i] ?? 0,
+        label: `${std}${a0.groupName ? ' ' + a0.groupName : ''} ${a0.section}${gTxt}`,
+        strength: strength ?? 0,
         subjects: list.map((a) => ({ subject: a.subject, periods: a.periods, pref: a.pref, ...(a.mode === 'shared' ? { flex: true } : {}) })),
         allocs: list,
         ...(sp.blocks.length ? { parallel: sp.blocks } : {}),
         weekPeriods: sp.weekPeriods,
       })
-    })
+    }
   }
   const order = (s: Section) => STANDARDS.indexOf(s.standard as (typeof STANDARDS)[number]) * 1000 + (s.groupId ? s.groupId.charCodeAt(0) : 0)
   return [...out, ...fallback].sort((a, b) => order(a) - order(b) || a.label.localeCompare(b.label))

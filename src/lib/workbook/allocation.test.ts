@@ -51,7 +51,7 @@ describe('named allocation', () => {
 
     const data: SchoolData = { strength: p.strength, hss: p.hss, staff: p.staff!, genderSeparate: true, allocations: a, overrides: { daysPerWeek: 6, periodsPerDay: 8, subjectsByStandard: p.subjectsByStandard, hssGroups: p.hssGroups } }
     const r = analyse({ id: 't', name: 'Test School', board: 'MATRIC' }, defaultRuleSet('MATRIC'), data)
-    expect(r.sections.filter((s) => s.standard === '6').map((s) => s.label)).toEqual(['6 A', '6 B'])
+    expect(r.sections.filter((s) => s.standard === '6').map((s) => s.label)).toEqual(['6 A (Boys)', '6 B (Girls)']) // boys and girls, two sections, nothing written: inferred
     const ids = new Set(r.recs.filter((x) => x.status === 'fail').map((x) => x.id))
     expect(ids.has('alloc-unassigned')).toBe(true)
     expect(ids.has('alloc-unused')).toBe(true) // E.Rani has no periods
@@ -95,7 +95,7 @@ describe('named allocation', () => {
     const data: SchoolData = { strength: p.strength, hss: p.hss, staff: p.staff!, genderSeparate: true, allocations: a, overrides: { daysPerWeek: 6, periodsPerDay: 8, subjectsByStandard: p.subjectsByStandard, hssGroups: p.hssGroups } }
     const r = analyse({ id: 't', name: 'Test', board: 'MATRIC' }, defaultRuleSet('MATRIC'), data)
     const secs = r.sections.filter((s) => s.standard === '11')
-    expect(secs.map((s) => [s.label, s.strength, s.weekPeriods])).toEqual([['11 Commerce A', 5, 48], ['11 Maths-Biology A', 19, 48]])
+    expect(secs.map((s) => [s.label, s.strength, s.weekPeriods])).toEqual([['11 Commerce A (Girls)', 5, 48], ['11 Maths-Biology A (Girls)', 19, 48]])
     const ids = new Set(r.recs.filter((x) => x.status === 'fail').map((x) => x.id))
     expect(ids.has('alloc-capacity')).toBe(false)
     expect(ids.has('alloc-groups')).toBe(false)
@@ -106,5 +106,21 @@ describe('named allocation', () => {
     const cells = tt.grid[mb.id].flat().filter((c) => c?.subject.includes('Computer Science'))
     expect(cells).toHaveLength(8)
     expect(cells.every((c) => c!.coTeacherIds?.length === 2)).toBe(true) // Biology + CS + Botany/Zoology at once
+  })
+
+  it('reads Boys / Girls from the Section cell and flags mixed sections', () => {
+    const H = ['Class', 'Section', 'Subject', 'Teacher Name(s)', 'Periods per Week']
+    const p = parseWorkbook([
+      { sheet: 'School Profile', data: [['Field', 'Value'], ['School Name *', 'Test'], ['Board *', 'Matriculation'], ['Separate Boys / Girls Sections from Class 6', 'Yes']] as Cell[][] },
+      { sheet: 'Students', data: [['Class', 'Group (Class 11–12 only)', 'Boys', 'Girls'], ['Class 6', '', 30, 28], ['Class 7', '', 12, 15]] as Cell[][] },
+      { sheet: 'Faculty', data: [F, ['', 'A.Kumar', 'TGT', 'Maths']] as Cell[][] },
+      { sheet: 'Subject Periods', data: [H, ['Class 6', 'A (Girls)', 'Maths', 'A.Kumar', 6], ['Class 6', 'B (Boys)', 'Maths', 'A.Kumar', 6], ['Class 7', 'A', 'Maths', 'A.Kumar', 6]] as Cell[][] },
+    ], defaultRuleSet)
+    expect(p.allocations!.map((a) => [a.section, a.gender])).toEqual([['A', 'G'], ['B', 'B'], ['A', undefined]])
+    const data: SchoolData = { strength: p.strength, hss: p.hss, staff: p.staff!, genderSeparate: true, allocations: p.allocations }
+    const r = analyse({ id: 't', name: 'T', board: 'MATRIC' }, defaultRuleSet('MATRIC'), data)
+    expect(r.sections.filter((s) => s.standard !== '7').map((s) => [s.label, s.strength])).toEqual([['6 A (Girls)', 28], ['6 B (Boys)', 30]])
+    expect(r.sections.find((s) => s.standard === '7')!.label).toBe('7 A (Mixed)')
+    expect(r.recs.find((x) => x.id === 'alloc-gender')).toMatchObject({ status: 'fail', people: ['7 A (Mixed): 12 boys + 15 girls'] })
   })
 })

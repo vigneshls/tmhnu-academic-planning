@@ -63,6 +63,33 @@ export function allocationChecks(rules: RuleSet, data: SchoolData, sections: Sec
     })
   }
 
+  // Boys / Girls sections from Class 6
+  if (data.genderSeparate) {
+    const mixed = sections.filter((s) => s.allocs && Number(s.standard) >= 6 && s.gender === 'C' && (s.boys ?? 0) > 0 && (s.girls ?? 0) > 0)
+    const extra = mixed.reduce((a, s) => a + week(s), 0)
+    out.push({
+      id: 'alloc-gender', status: mixed.length ? 'fail' : 'pass', severity: 'high', area: 'Class size & ratios',
+      title: 'Separate Boys / Girls sections from Class 6',
+      finding: mixed.length
+        ? `${mixed.length} section(s) have boys and girls together, but the School Profile says sections are separate from Class 6.`
+        : 'Every section from Class 6 is a boys’ or girls’ section.',
+      action: mixed.length
+        ? `Either split them into Boys and Girls sections (about ${extra} more periods a week, ≈ ${Math.ceil(extra / 32)} more teacher(s) at 32 periods), or set “Separate Boys / Girls Sections” to No if mixed sections are allowed for these classes. If the sections are already separate, write the Section as “A (Boys)” / “B (Girls)” in the Subject Periods sheet.`
+        : 'No action.',
+      people: mixed.length ? mixed.map((s) => `${s.label}: ${s.boys} boys + ${s.girls} girls`) : undefined,
+      source: SOURCES.PLANNING,
+    })
+    const guessed = sections.filter((s) => s.genderInferred)
+    if (guessed.length)
+      out.push({
+        id: 'alloc-gender-inferred', status: 'fail', severity: 'low', area: 'Class size & ratios',
+        title: 'Boys / Girls section names to confirm',
+        finding: `For ${[...new Set(guessed.map((s) => s.standard))].map((x) => `Class ${x}`).join(', ')}, the sheet does not say which section is for boys and which for girls; the app assumed ${guessed.map((s) => s.label).join(', ')}.`,
+        action: 'Write the Section as “A (Boys)” / “B (Girls)” in the Subject Periods sheet so the labels and strengths are exact.',
+        source: SOURCES.PLANNING,
+      })
+  }
+
   // parallel electives (Class 11–12)
   const par = sections.filter((s) => s.parallel?.length)
   if (par.length)

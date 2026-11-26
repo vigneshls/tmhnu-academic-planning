@@ -152,6 +152,8 @@ export interface Allocation {
   care?: boolean
   /** Set when the parser treated a blank teacher as "Subject Wise" (activity periods) */
   autoShared?: boolean
+  /** Boys / Girls section, when written in the Section cell (e.g. "A (Boys)") */
+  gender?: 'B' | 'G'
 }
 
 /** Electives taught at the same time to different students of one section */
@@ -216,6 +218,10 @@ export interface Section {
   parallel?: ParallelBlock[]
   /** Periods the section occupies in the week (parallel electives counted once) */
   weekPeriods?: number
+  /** Gender worked out from the student counts, not written by the school */
+  genderInferred?: boolean
+  boys?: number
+  girls?: number
 }
 
 export interface DemandRow {
@@ -254,6 +260,8 @@ export interface Cell {
   subject: string
   teacherId: string | null
   coTeacherIds?: string[]
+  /** Changed by hand after generation */
+  edited?: boolean
 }
 
 export interface TimetableResult {

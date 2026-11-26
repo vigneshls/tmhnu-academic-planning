@@ -215,7 +215,9 @@ export function parseWorkbook(sheets: { sheet: string; data: Cell[][] }[], defau
           const key = `${std}|${groupId ?? ''}`
           const st = seen.get(key) ?? { letter: 0, subjects: new Set<string>() }
           let section: string
-          const explicit = cSection >= 0 ? text(r[cSection]).toUpperCase().replace(/[^A-Z]/g, '').slice(0, 2) : ''
+          const rawSec = cSection >= 0 ? text(r[cSection]) : ''
+          const secGender = /\bboys?\b|\(\s*b\s*\)/i.test(rawSec) ? 'B' : /\bgirls?\b|\(\s*g\s*\)/i.test(rawSec) ? 'G' : undefined
+          const explicit = rawSec.replace(/\(.*?\)|\bboys?\b|\bgirls?\b|\bsection\b|\bsec\b/gi, '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 2)
           if (explicit) section = explicit
           else {
             const sk = k(subject)
@@ -228,7 +230,7 @@ export function parseWorkbook(sheets: { sheet: string; data: Cell[][] }[], defau
           const model = (groupId ? base.hssGroups.find((g) => g.id === groupId)?.subjects : base.subjectsByStandard[std])?.find((x) => k(x.subject) === k(subject))
           const pref = ({ [k(PREF_TIME[0])]: 'morning', [k(PREF_TIME[1])]: 'afternoon', [k(PREF_TIME[2])]: 'last' } as Record<string, SubjectAlloc['pref']>)[pt] ?? model?.pref ?? 'any'
           const cell = cTeacher >= 0 ? text(r[cTeacher]) : ''
-          const a: Allocation = { standard: std, groupId, groupName, section, subject, periods, pref, teachers: [], mode: 'unassigned' }
+          const a: Allocation = { standard: std, groupId, groupName, section, subject, periods, pref, teachers: [], mode: 'unassigned', ...(secGender ? { gender: secGender } : {}) }
           if (CARE_RE.test(subject)) a.care = true
           if (cell && isSharedWord(cell)) a.mode = 'shared'
           else if (cell) {

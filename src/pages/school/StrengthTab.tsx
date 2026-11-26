@@ -15,10 +15,15 @@ function Chips({ secs }: { secs: Section[] }) {
     <div className="flex flex-wrap gap-1">
       {secs.map((s) => {
         const letter = s.id.split('-').pop()
-        const g = s.gender === 'B' ? 'Boys' : s.gender === 'G' ? 'Girls' : ''
+        const mixed = s.gender === 'C' && Number(s.standard) >= 6 && (s.boys ?? 0) > 0 && (s.girls ?? 0) > 0
+        const g = s.gender === 'B' ? 'Boys' : s.gender === 'G' ? 'Girls' : mixed ? 'Mixed' : ''
         return (
-          <span key={s.id} className={`rounded border px-2 py-0.5 text-xs ${s.gender === 'B' ? 'border-sky-200 bg-sky-50 text-sky-900' : s.gender === 'G' ? 'border-rose-200 bg-rose-50 text-rose-900' : 'border-slate-200 bg-slate-50 text-slate-700'}`}>
-            {letter}{g && ` · ${g}`} · {s.strength}
+          <span
+            key={s.id}
+            title={mixed ? `${s.boys} boys + ${s.girls} girls in one section` : s.genderInferred ? 'Boys/Girls assumed from the counts — write “A (Boys)” / “B (Girls)” in the Subject Periods sheet to confirm' : undefined}
+            className={`rounded border px-2 py-0.5 text-xs ${s.gender === 'B' ? 'border-sky-200 bg-sky-50 text-sky-900' : s.gender === 'G' ? 'border-rose-200 bg-rose-50 text-rose-900' : mixed ? 'border-amber-300 bg-amber-50 text-amber-900' : 'border-slate-200 bg-slate-50 text-slate-700'}`}
+          >
+            {letter}{g && ` · ${g}`} · {mixed ? `${s.boys}B + ${s.girls}G` : s.strength}{s.genderInferred ? ' ?' : ''}
           </span>
         )
       })}
