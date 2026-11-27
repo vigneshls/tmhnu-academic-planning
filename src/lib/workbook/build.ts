@@ -160,7 +160,7 @@ export async function buildWorkbook(Excel: ExcelJS, o: BuildOptions): Promise<Ar
   const staff: Staff[] = d?.staff ?? []
   for (const s of staff)
     fw.addRow([
-      s.employeeId ?? '', s.name, CATEGORY_LABEL[s.category], s.subjects[0] ?? '', s.subjects.slice(1).join('; '),
+      s.employeeId ?? '', s.name, s.designation ?? CATEGORY_LABEL[s.category], s.subjects[0] ?? '', s.subjects.slice(1).join('; '),
       LABEL.highest[s.highestQualification ?? ''] === '—' ? '' : LABEL.highest[s.highestQualification ?? ''],
       PROF_OUT[s.professionalQualification ?? ''] ?? '', TET_OUT[s.tet ?? ''] ?? '',
       LABEL.appt[s.appointment ?? ''] === '—' ? '' : LABEL.appt[s.appointment ?? ''],

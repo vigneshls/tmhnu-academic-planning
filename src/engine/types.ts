@@ -91,6 +91,8 @@ export interface Staff {
   id: string
   name: string
   category: Category
+  /** Designation exactly as written in the school's Excel (shown as-is; category is used only for calculations) */
+  designation?: string
   /** First subject = main subject */
   subjects: string[]
   maxPerWeek?: number
@@ -156,9 +158,16 @@ export interface Allocation {
   gender?: 'B' | 'G'
   /** Added by the app: Girls section created from a mixed section (same subjects and teachers) */
   autoSplit?: boolean
+  /** Students in this section (set by the section plan from the student count) */
+  size?: number
+  /** Section added by the app from the student count; subjects and teachers copied from this sheet section */
+  copiedFrom?: string
 }
 
 /** Electives taught at the same time to different students of one section */
+/** Section strengths typed by the user (Manual); absent = Auto (even split within the section limit) */
+export interface SectionPlan { boys?: number[]; girls?: number[]; mixed?: number[] }
+
 export interface ParallelBlock {
   count: number
   lanes: { subject: string; teacherId: string | null }[]
@@ -181,6 +190,8 @@ export interface SchoolData {
   staff: Staff[]
   /** Separate boys/girls sections from Class 6 upward */
   genderSeparate: boolean
+  /** Manual section strengths per class, key "std|groupId" (absent = Auto) */
+  sectionPlan?: Record<string, SectionPlan>
   timetable?: TimetableResult
   /** Checklist items confirmed by the school (id → entry) */
   compliance?: Record<string, ComplianceEntry>
@@ -244,6 +255,8 @@ export interface Lesson {
   teacherId: string | null
   /** Other teachers busy in the same period (parallel electives) */
   coTeacherIds?: string[]
+  /** Typed by hand in the timetable editor (its count is whatever is placed) */
+  custom?: boolean
   count: number
   pref: SlotPref
 }

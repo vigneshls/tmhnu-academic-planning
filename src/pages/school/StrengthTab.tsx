@@ -1,5 +1,6 @@
 import { stageOf } from '../../engine/rules'
-import type { GenderCount, RuleSet, SchoolData, Section } from '../../engine/types'
+import { partsOf, planClass, planKey, planMismatch } from '../../engine/sectionPlan'
+import type { GenderCount, RuleSet, SchoolData, Section, SectionPlan } from '../../engine/types'
 import { STANDARDS } from '../../engine/types'
 
 const num = (v: string) => Math.max(0, Math.floor(Number(v) || 0))
@@ -27,6 +28,61 @@ function Chips({ secs }: { secs: Section[] }) {
           </span>
         )
       })}
+    </div>
+  )
+}
+
+const PART_NAME = { B: 'Boys', G: 'Girls', C: 'Students' } as const
+const PART_KEY = { B: 'boys', G: 'girls', C: 'mixed' } as const
+
+/** Sections of one class: Auto (even split within the limit) or Manual (type each section's strength) */
+function SecCell({ std, groupId, c, cap, secs, data, onChange }: { std: string; groupId?: string; c: GenderCount; cap: number; secs: Section[]; data: SchoolData; onChange: (d: SchoolData) => void }) {
+  const key = planKey(std, groupId)
+  const plan = data.sectionPlan?.[key]
+  const setPlan = (p: SectionPlan | undefined) => {
+    const next = { ...(data.sectionPlan ?? {}) }
+    if (p) next[key] = p
+    else delete next[key]
+    onChange({ ...data, sectionPlan: next })
+  }
+  const toManual = () => {
+    const p: SectionPlan = {}
+    for (const x of planClass(std, c, cap, data.genderSeparate)) (p[PART_KEY[x.gender]] ??= []).push(x.size)
+    setPlan(p)
+  }
+  const parts = partsOf(std, c, data.genderSeparate)
+  const bad = planMismatch(std, c, data.genderSeparate, plan)
+  return (
+    <div className="space-y-2">
+      <div className="flex flex-wrap items-center gap-2">
+        <select aria-label={`Sections for ${std}${groupId ? ' ' + groupId : ''}`} className="rounded border border-slate-300 px-1.5 py-1 text-xs" value={plan ? 'manual' : 'auto'} onChange={(e) => (e.target.value === 'auto' ? setPlan(undefined) : toManual())}>
+          <option value="auto">Auto</option>
+          <option value="manual">Manual</option>
+        </select>
+        <Chips secs={secs} />
+      </div>
+      {plan && (
+        <div className="space-y-1.5 rounded-md border border-slate-200 bg-slate-50 p-2">
+          {parts.map((pt) => {
+            const k = PART_KEY[pt.gender]
+            const sizes = plan[k] ?? []
+            const set = (arr: number[]) => setPlan({ ...plan, [k]: arr })
+            const typed = sizes.reduce((a, b) => a + b, 0)
+            return (
+              <div key={pt.gender} className="flex flex-wrap items-center gap-1.5 text-xs">
+                <span className="w-14 text-slate-600">{PART_NAME[pt.gender]}</span>
+                {sizes.map((n, i) => (
+                  <input key={i} aria-label={`${PART_NAME[pt.gender]} section ${i + 1} strength`} type="number" min={0} className="w-14 rounded border border-slate-300 px-1.5 py-1 text-right" value={n} onChange={(e) => set(sizes.map((x, j) => (j === i ? num(e.target.value) : x)))} />
+                ))}
+                <button type="button" title="Add a section" className="rounded border border-slate-300 bg-white px-2 py-1" onClick={() => set([...sizes, 0])}>+</button>
+                {sizes.length > 1 && <button type="button" title="Remove the last section" className="rounded border border-slate-300 bg-white px-2 py-1" onClick={() => set(sizes.slice(0, -1))}>−</button>}
+                <span className={typed === pt.n ? 'text-emerald-700' : 'font-medium text-red-600'}>{typed} / {pt.n}{sizes.some((x) => x > cap) ? ` · above limit ${cap}` : ''}</span>
+              </div>
+            )
+          })}
+          {bad.length > 0 && <p className="text-xs text-red-600">Typed strengths do not add up to the students entered — correct them or switch back to Auto.</p>}
+        </div>
+      )}
     </div>
   )
 }
@@ -66,8 +122,9 @@ export default function StrengthTab({ rules, data, sections, onChange }: { rules
         </label>
         <p className="text-sm text-slate-500 md:ml-auto md:max-w-xl">
           {split
-            ? 'On: from Class 6, boys and girls are placed in their own sections, each filled up to the section limit. Pre-KG to Class 5 are always mixed.'
-            : 'Off: all classes have mixed sections, filled up to the section limit.'}
+            ? 'On: from Class 6, boys and girls are placed in their own sections. Pre-KG to Class 5 are always mixed.'
+            : 'Off: all classes have mixed sections.'}
+          {' '}Auto = fewest sections within the limit, students shared evenly (35 with limit 30 → 18 + 17). Manual = type each section’s strength.
           {' '}Section limits are set per board under Board Rules.
         </p>
       </div>
@@ -75,7 +132,7 @@ export default function StrengthTab({ rules, data, sections, onChange }: { rules
       <Card title="Pre-KG to Class 5" note="Enter the total number of students. Sections are always mixed.">
         <table className="w-full text-sm">
           <thead className="border-b border-slate-200 bg-slate-50">
-            <tr><th className={th}>Standard</th><th className={`${th} text-right`}>Students</th><th className={`${th} text-right`}>Max per section</th><th className={`${th} text-right`}>Sections</th><th className={th}>Sections formed (letter · students)</th></tr>
+            <tr><th className={th}>Standard</th><th className={`${th} text-right`}>Students</th><th className={`${th} text-right`}>Max per section</th><th className={`${th} text-right`}>Sections</th><th className={th}>Sections (Auto / Manual)</th></tr>
           </thead>
           <tbody>
             {primary.map((std) => {
@@ -86,7 +143,7 @@ export default function StrengthTab({ rules, data, sections, onChange }: { rules
                   <td className={`${td} text-right`}><input aria-label={`${label(std)} students`} type="number" min={0} className={input} value={c.boys + c.girls} onChange={(e) => setStd(std, { boys: num(e.target.value), girls: 0 })} /></td>
                   <td className={`${td} text-right text-slate-500`}>{rules.sectionCap[stageOf(std)]}</td>
                   <td className={`${td} text-right font-semibold`}>{secsOf(std).length}</td>
-                  <td className={td}><Chips secs={secsOf(std)} /></td>
+                  <td className={td}><SecCell std={std} c={c} cap={rules.sectionCap[stageOf(std)]} secs={secsOf(std)} data={data} onChange={onChange} /></td>
                 </tr>
               )
             })}
@@ -100,7 +157,7 @@ export default function StrengthTab({ rules, data, sections, onChange }: { rules
       <Card title="Class 6 to Class 10" note="Enter boys and girls separately.">
         <table className="w-full text-sm">
           <thead className="border-b border-slate-200 bg-slate-50">
-            <tr><th className={th}>Standard</th><th className={`${th} text-right`}>Boys</th><th className={`${th} text-right`}>Girls</th><th className={`${th} text-right`}>Total</th><th className={`${th} text-right`}>Max per section</th><th className={`${th} text-right`}>Sections</th><th className={th}>Sections formed (letter · students)</th></tr>
+            <tr><th className={th}>Standard</th><th className={`${th} text-right`}>Boys</th><th className={`${th} text-right`}>Girls</th><th className={`${th} text-right`}>Total</th><th className={`${th} text-right`}>Max per section</th><th className={`${th} text-right`}>Sections</th><th className={th}>Sections (Auto / Manual)</th></tr>
           </thead>
           <tbody>
             {middle.map((std) => {
@@ -113,7 +170,7 @@ export default function StrengthTab({ rules, data, sections, onChange }: { rules
                   <td className={`${td} text-right`}>{c.boys + c.girls}</td>
                   <td className={`${td} text-right text-slate-500`}>{rules.sectionCap[stageOf(std)]}</td>
                   <td className={`${td} text-right font-semibold`}>{secsOf(std).length}</td>
-                  <td className={td}><Chips secs={secsOf(std)} /></td>
+                  <td className={td}><SecCell std={std} c={c} cap={rules.sectionCap[stageOf(std)]} secs={secsOf(std)} data={data} onChange={onChange} /></td>
                 </tr>
               )
             })}
@@ -131,7 +188,7 @@ export default function StrengthTab({ rules, data, sections, onChange }: { rules
       <Card title="Class 11 and Class 12 — by group" note={`Sections are formed separately for each group (max ${rules.sectionCap.HSS} per section).`}>
         <table className="w-full text-sm">
           <thead className="border-b border-slate-200 bg-slate-50">
-            <tr><th className={th}>Standard</th><th className={th}>Group</th><th className={`${th} text-right`}>Boys</th><th className={`${th} text-right`}>Girls</th><th className={`${th} text-right`}>Total</th><th className={`${th} text-right`}>Sections</th><th className={th}>Sections formed (letter · students)</th></tr>
+            <tr><th className={th}>Standard</th><th className={th}>Group</th><th className={`${th} text-right`}>Boys</th><th className={`${th} text-right`}>Girls</th><th className={`${th} text-right`}>Total</th><th className={`${th} text-right`}>Sections</th><th className={th}>Sections (Auto / Manual)</th></tr>
           </thead>
           <tbody>
             {hssRows.map(({ std, g, c }, i) => (
@@ -142,7 +199,7 @@ export default function StrengthTab({ rules, data, sections, onChange }: { rules
                 <td className={`${td} text-right`}><input aria-label={`Class ${std} ${g.name} girls`} type="number" min={0} className={input} value={c.girls} onChange={(e) => setHss(std, g.id, { ...c, girls: num(e.target.value) })} /></td>
                 <td className={`${td} text-right`}>{c.boys + c.girls}</td>
                 <td className={`${td} text-right font-semibold`}>{secsOf(std, g.id).length}</td>
-                <td className={td}><Chips secs={secsOf(std, g.id)} /></td>
+                <td className={td}><SecCell std={std} groupId={g.id} c={c} cap={rules.sectionCap.HSS} secs={secsOf(std, g.id)} data={data} onChange={onChange} /></td>
               </tr>
             ))}
             <tr className="border-t border-slate-200 bg-slate-50 font-semibold">

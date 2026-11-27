@@ -69,7 +69,7 @@ export default function StaffingTab({ rules, staffing: s, summary }: { rules: Ru
                 {open === f.family && (
                   <tr className="bg-slate-50/60">
                     <td colSpan={8} className="px-8 py-3 text-sm text-slate-700">
-                      <div><b>Teachers of this subject:</b> {f.teachers.length ? f.teachers.map((t) => `${t.name} (${CATEGORY_LABEL[t.category].split(' (')[0]}${t.fte < 1 ? `, ${f1(t.fte)}` : ''})`).join(', ') : 'none'}</div>
+                      <div><b>Teachers of this subject:</b> {f.teachers.length ? f.teachers.map((t) => `${t.name} (${t.designation ?? CATEGORY_LABEL[t.category].split(' (')[0]}${t.fte < 1 ? `, ${f1(t.fte)}` : ''})`).join(', ') : 'none'}</div>
                       {f.notes.map((x, i) => <div key={i} className="mt-1 text-amber-800">• {x}</div>)}
                     </td>
                   </tr>

@@ -1,6 +1,6 @@
 import { buildSections, computeDemand, summarize } from '../engine/calc'
 import { effectiveRules } from '../engine/effective'
-import { splitGenderSections } from '../engine/genderSplit'
+import { applySectionPlan } from '../engine/sectionPlan'
 import { recommend, score, type Recommendation } from '../engine/recommend'
 import { SOURCES } from '../engine/sources'
 import { subjectStaffing } from '../engine/staffing'
@@ -8,8 +8,9 @@ import type { RuleSet, School, SchoolData } from '../engine/types'
 
 /** One place that turns stored data into everything the screens show */
 export function analyse(school: School, boardRules: RuleSet, stored: SchoolData) {
-  // Separate Boys / Girls sections from Class 6 when the school asks for it (mixed sections are split)
-  const { data, split } = splitGenderSections(stored)
+  // Sections follow the student counts (Auto: even split within the limit; Manual: typed sizes), boys and girls apart from Class 6
+  const base = effectiveRules(boardRules, stored)
+  const { data, notes } = applySectionPlan(base, stored)
   const rules = effectiveRules(boardRules, data)
   const sections = buildSections(rules, data)
   const demand = computeDemand(rules, sections, data.staff)
@@ -26,13 +27,13 @@ export function analyse(school: School, boardRules: RuleSet, stored: SchoolData)
   }
   const recs = recommend({ board: school.board, rules, data, sections, demand, summary })
   if (staffing) recs.push(...staffingRecs(staffing))
-  if (split.length)
+  if (notes.length)
     recs.push({
-      id: 'gender-split', status: 'fail', severity: 'medium', area: 'Class size & ratios',
-      title: 'Boys and Girls sections created',
-      finding: `${split.map((x) => `Class ${x.cls}`).join(', ')}: boys and girls were in one section; the app now plans separate Boys and Girls sections with the same subjects and teachers (${split.reduce((a, x) => a + x.periods, 0)} more periods a week).`,
-      action: 'Check Staffing and Teacher Allocation for the extra load, assign other teachers where someone is over the limit, then generate the timetable. To keep a class mixed, untick “Separate boys and girls sections” on the Students tab.',
-      people: split.flatMap((x) => [x.boys, x.girls]),
+      id: 'section-plan', status: 'fail', severity: 'medium', area: 'Class size & ratios',
+      title: 'Sections follow the student count',
+      finding: `In ${notes.length} class(es) the sections needed for the present strength differ from the sections in the school’s sheet. New sections take the subjects and teachers of the class’s existing section.`,
+      action: 'Check Teacher Allocation for teachers now over the limit and assign others, then re-generate the timetable. To keep the sheet’s sections, set the class to Manual on the Students tab and type the section strengths.',
+      people: notes.map((n) => `Class ${n.cls}: sheet ${n.sheet.join(', ')} → now ${n.planned.join(', ')}`),
       source: SOURCES.PLANNING,
     })
   return { data, rules, sections, demand, summary, staffing, recs, score: score(recs) }

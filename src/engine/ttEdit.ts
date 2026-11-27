@@ -10,12 +10,35 @@ function clone(tt: TimetableResult, sectionIds: string[]): TimetableResult {
   return { ...tt, grid }
 }
 
-/** Lessons not fully placed, worked out from the grid */
+/** Lessons not fully placed, worked out from the grid (typed lessons count exactly what is placed) */
 export function recomputeUnplaced(tt: TimetableResult): TimetableResult {
   const placed = new Map<string, number>()
   for (const s of tt.sections) for (const row of tt.grid[s.id]) for (const c of row) if (c) placed.set(c.lessonId, (placed.get(c.lessonId) ?? 0) + 1)
-  const unplaced = tt.lessons.map((l) => ({ lessonId: l.id, remaining: l.count - (placed.get(l.id) ?? 0) })).filter((u) => u.remaining > 0)
-  return { ...tt, unplaced }
+  const lessons = tt.lessons.flatMap((l) => (l.custom ? ((placed.get(l.id) ?? 0) > 0 ? [{ ...l, count: placed.get(l.id)! }] : []) : [l]))
+  const unplaced = lessons.map((l) => ({ lessonId: l.id, remaining: l.count - (placed.get(l.id) ?? 0) })).filter((u) => u.remaining > 0)
+  return { ...tt, lessons, unplaced }
+}
+
+const k = (x: string) => x.trim().toLowerCase().replace(/\s+/g, ' ')
+
+/**
+ * Type a subject and teacher into a period. It joins the section's lesson of that subject (and teacher, if one matches);
+ * a subject the section does not have becomes a typed lesson.
+ */
+export function typeCell(tt: TimetableResult, sectionId: string, d: number, p: number, subject: string, teacherId: string | null): TimetableResult {
+  const sub = subject.trim()
+  if (!sub) return tt
+  const mine = tt.lessons.filter((l) => l.sectionId === sectionId && k(l.subject) === k(sub))
+  const match = mine.find((l) => l.teacherId === teacherId) ?? mine[0]
+  let lessons = tt.lessons
+  let lesson = match
+  if (!lesson) {
+    lesson = { id: `${sectionId}|typed|${sub}|${teacherId ?? '-'}`, sectionId, subject: sub, teacherId, count: 0, pref: 'any', custom: true }
+    if (!lessons.some((l) => l.id === lesson!.id)) lessons = [...lessons, lesson]
+  }
+  const n = clone({ ...tt, lessons }, [sectionId])
+  n.grid[sectionId][d][p] = { lessonId: lesson.id, subject: lesson.subject, teacherId, ...(match?.coTeacherIds && teacherId === match.teacherId ? { coTeacherIds: match.coTeacherIds } : {}), edited: true }
+  return recomputeUnplaced(n)
 }
 
 /** Sections in which these teachers already teach at day d, period p (other than `except`) */

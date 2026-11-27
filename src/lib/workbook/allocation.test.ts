@@ -51,19 +51,19 @@ describe('named allocation', () => {
 
     const data: SchoolData = { strength: p.strength, hss: p.hss, staff: p.staff!, genderSeparate: true, allocations: a, overrides: { daysPerWeek: 6, periodsPerDay: 8, subjectsByStandard: p.subjectsByStandard, hssGroups: p.hssGroups } }
     const r = analyse({ id: 't', name: 'Test School', board: 'MATRIC' }, defaultRuleSet('MATRIC'), data)
-    expect(r.sections.filter((s) => s.standard === '6').map((s) => s.label)).toEqual(['6 A (Boys)', '6 B (Girls)']) // boys and girls, two sections, nothing written: inferred
+    expect(r.sections.filter((s) => s.standard === '6').map((s) => s.label)).toEqual(['6 A (Boys)', '6 B (Girls)', '6 C (Girls)']) // sections follow the count: 10 boys → 1, 50 girls → 25 + 25 (limit 35)
     const ids = new Set(r.recs.filter((x) => x.status === 'fail').map((x) => x.id))
     expect(ids.has('alloc-unassigned')).toBe(true)
     expect(ids.has('alloc-unused')).toBe(true) // E.Rani has no periods
     expect(ids.has('alloc-groups')).toBe(true) // Arts students, no Arts subjects
     expect([...ids].some((x) => x.startsWith('short-'))).toBe(false)
     const maths = r.staffing!.families.find((f) => f.family === 'maths')!
-    expect(maths).toMatchObject({ required: 0.4, available: 1, status: 'ok' })
+    expect(maths).toMatchObject({ periods: { '1-5': 0, '6-10': 21, '11-12': 0 }, available: 1, status: 'ok' }) // 7 periods × 3 sections
     expect(r.staffing!.families.find((f) => f.family === 'physics')).toMatchObject({ available: 1, status: 'ok' }) // C.Ravi only; D.Mala is Chemistry
     const tt = generateTimetable(r.rules, r.sections, data.staff, { attempts: 3 })
     expect(tt.violations).toEqual([])
     const kumar = p.staff!.find((s) => s.name === 'A.Kumar')!.id
-    expect(tt.lessons.filter((l) => l.teacherId === kumar && l.subject === 'Maths').reduce((s, l) => s + l.count, 0)).toBe(14)
+    expect(tt.lessons.filter((l) => l.teacherId === kumar && l.subject === 'Maths').reduce((s, l) => s + l.count, 0)).toBe(21) // Maths 7 periods in each of the 3 sections
   })
 
   it('treats partial groups and Students-sheet alternatives as parallel electives', () => {
@@ -122,9 +122,9 @@ describe('named allocation', () => {
     expect(r.sections.filter((s) => s.standard !== '7').map((s) => [s.label, s.strength])).toEqual([['6 A (Girls)', 28], ['6 B (Boys)', 30]])
     // Class 7 had boys and girls in one section: split into 7 A (Boys) and 7 B (Girls) with the same subjects and teacher
     expect(r.sections.filter((s) => s.standard === '7').map((s) => [s.label, s.strength, s.subjects.map((x) => x.subject).join()])).toEqual([['7 A (Boys)', 12, 'Maths'], ['7 B (Girls)', 15, 'Maths']])
-    expect(r.recs.find((x) => x.id === 'gender-split')).toMatchObject({ people: ['7 A (Boys) — 12', '7 B (Girls) — 15'] })
+    expect(r.recs.find((x) => x.id === 'section-plan')).toMatchObject({ people: ['Class 7: sheet A → now A (Boys) 12, B (Girls) 15'] })
     expect(r.recs.find((x) => x.id === 'alloc-gender')).toMatchObject({ status: 'pass' })
-    expect(r.data.allocations!.filter((a) => a.standard === '7').map((a) => [a.section, a.gender, a.teachers.length])).toEqual([['A', 'B', 1], ['B', 'G', 1]])
+    expect(r.data.allocations!.filter((a) => a.standard === '7').map((a) => [a.section, a.gender, a.teachers.length, a.copiedFrom])).toEqual([['A', 'B', 1, undefined], ['B', 'G', 1, 'A']])
     // with separate sections switched off, the class stays one mixed section
     const mixed = analyse({ id: 't', name: 'T', board: 'MATRIC' }, defaultRuleSet('MATRIC'), { ...data, genderSeparate: false })
     expect(mixed.sections.filter((s) => s.standard === '7').map((s) => s.label)).toEqual(['7 A'])

@@ -156,6 +156,7 @@ export function parseFacultyRows(rows: Cell[][], idPrefix = 'st'): ParseResult {
       id: `${idPrefix}-${employeeId || rowNo}`,
       name,
       category,
+      ...(desig ? { designation: desig } : {}),
       subjects,
       employeeId: employeeId || undefined,
       highestQualification,

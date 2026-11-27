@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { generateTimetable, teacherLoad, validateTimetable } from '../../engine/timetable'
-import { busyAt, clearCell, lessonsFor, placeLesson, setTeacher, swapCells, swapClashes } from '../../engine/ttEdit'
+import { busyAt, clearCell, lessonsFor, placeLesson, setTeacher, swapCells, swapClashes, typeCell } from '../../engine/ttEdit'
 import type { RuleSet, School, SchoolData, Section, TimetableResult } from '../../engine/types'
 import { downloadCsv } from '../../lib/csv'
 
@@ -209,7 +209,7 @@ function CellEditor({ tt, sectionId, d, p, apply, close }: { tt: TimetableResult
   const teachers = [...tt.teachers].sort((a, b) => a.name.localeCompare(b.name))
   const todo = lessonsFor(tt, sectionId)
   return (
-    <div className="no-print space-y-3 rounded-lg border bg-white p-3 text-sm">
+    <div className="no-print space-y-3 rounded-lg border bg-white p-3 text-sm" key={`${sectionId}-${d}-${p}`}>
       <div className="flex items-center justify-between gap-2">
         <b>{slot}: {c ? c.subject : 'empty period'}</b>
         <button className="rounded border px-2 py-1 text-xs" onClick={close}>Close</button>
@@ -237,7 +237,9 @@ function CellEditor({ tt, sectionId, d, p, apply, close }: { tt: TimetableResult
           <button className="rounded border border-red-200 px-3 py-2 text-red-700" onClick={() => apply(clearCell(tt, sectionId, d, p), `${slot} ${c.subject} removed (now listed as not placed)`)}>Remove period</button>
           <span className="text-xs text-slate-500">To move it, click another period in the grid.</span>
         </div>
-      ) : (
+      ) : null}
+      <TypeRow tt={tt} sectionId={sectionId} d={d} p={p} slot={slot} apply={apply} />
+      {c ? null : (
         <div className="flex flex-wrap items-end gap-3">
           <label className="flex flex-col gap-1">
             <span className="text-xs text-slate-500">Put a subject here</span>
@@ -260,6 +262,41 @@ function CellEditor({ tt, sectionId, d, p, apply, close }: { tt: TimetableResult
         </div>
       )}
     </div>
+  )
+}
+
+/** Type a subject and teacher for this period (suggestions from the class's subjects and the faculty list) */
+function TypeRow({ tt, sectionId, d, p, slot, apply }: { tt: TimetableResult; sectionId: string; d: number; p: number; slot: string; apply: (n: TimetableResult, what: string) => void }) {
+  const c = tt.grid[sectionId][d][p]
+  const [subject, setSubject] = useState(c?.subject ?? '')
+  const [teacher, setTeacher] = useState(c?.teacherId ? (tt.teachers.find((t) => t.id === c.teacherId)?.name ?? '') : '')
+  const [err, setErr] = useState('')
+  const subjects = [...new Set(tt.lessons.filter((l) => l.sectionId === sectionId).map((l) => l.subject))].sort()
+  const real = tt.teachers.filter((t) => !t.vacancy).sort((a, b) => a.name.localeCompare(b.name))
+  const found = teacher.trim() ? tt.teachers.find((t) => t.name.trim().toLowerCase() === teacher.trim().toLowerCase()) : undefined
+  const busy = found ? busyAt(tt, [found.id], d, p, sectionId) : []
+  const go = () => {
+    if (!subject.trim()) return setErr('Type a subject.')
+    if (teacher.trim() && !found) return setErr(`“${teacher}” is not in the faculty list — pick a name from the suggestions or leave it blank.`)
+    setErr('')
+    apply(typeCell(tt, sectionId, d, p, subject, found?.id ?? null), `${slot}: ${subject.trim()}${found ? ` — ${found.name}` : ''} typed in`)
+  }
+  return (
+    <form className="flex flex-wrap items-end gap-3 border-t pt-3" onSubmit={(e) => { e.preventDefault(); go() }}>
+      <label className="flex flex-col gap-1">
+        <span className="text-xs text-slate-500">Type subject</span>
+        <input className="w-48 rounded border px-2 py-2" list={`subj-${sectionId}`} value={subject} onChange={(e) => setSubject(e.target.value)} placeholder="e.g. Maths" />
+        <datalist id={`subj-${sectionId}`}>{subjects.map((x) => <option key={x} value={x} />)}</datalist>
+      </label>
+      <label className="flex flex-col gap-1">
+        <span className="text-xs text-slate-500">Type teacher</span>
+        <input className="w-56 rounded border px-2 py-2" list="tt-teachers" value={teacher} onChange={(e) => setTeacher(e.target.value)} placeholder="Start typing a name" />
+        <datalist id="tt-teachers">{real.map((t) => <option key={t.id} value={t.name} />)}</datalist>
+      </label>
+      <button className="rounded bg-[#0f2744] px-3 py-2 text-white">Apply</button>
+      {found && <span className={`text-xs ${busy.length ? 'text-red-600' : 'text-emerald-700'}`}>{busy.length ? `busy in ${busy[0].section} at this time` : 'free at this time'}</span>}
+      {err && <span className="w-full text-xs text-red-600">{err}</span>}
+    </form>
   )
 }
 

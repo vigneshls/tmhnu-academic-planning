@@ -52,7 +52,7 @@ export interface FamilyRow {
   available: number
   gap: number
   status: 'deficit' | 'excess' | 'ok'
-  teachers: { name: string; category: Category; fte: number }[]
+  teachers: { name: string; category: Category; designation?: string; fte: number }[]
   coveredBy: string[]
   notes: string[]
 }
@@ -118,7 +118,7 @@ export function subjectStaffing(rules: RuleSet, data: SchoolData, sections: Sect
     if (!f) continue
     const fte = st.category === 'ACAD_HEAD' ? headFte : 1
     const r = row(f === 'physics' || f === 'chemistry' || f === 'biology' ? f : f)
-    r.teachers.push({ name: st.name, category: st.category, fte })
+    r.teachers.push({ name: st.name, category: st.category, ...(st.designation ? { designation: st.designation } : {}), fte })
     r.available += fte
   }
   // TGT Science: Physics/Chemistry/Biology TGTs belong to the Science pool in 6–10

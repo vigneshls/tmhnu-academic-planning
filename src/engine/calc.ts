@@ -2,8 +2,8 @@ import { categoryForStage, effectiveLimits, isClassTeacherStage, stageOf } from 
 import type { Allocation, Category, DemandRow, RuleSet, SchoolData, Section, Stage, Staff } from './types'
 import { HSS_STANDARDS, STANDARDS, isTeachingCategory } from './types'
 import { splitParallel } from './parallel'
+import { planClass, planKey } from './sectionPlan'
 
-const LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
 
 export const sectionsFor = (count: number, cap: number) => (count > 0 && cap > 0 ? Math.ceil(count / cap) : 0)
 
@@ -25,29 +25,17 @@ export function buildSections(rules: RuleSet, data: SchoolData): Section[] {
 export function normSections(rules: RuleSet, data: SchoolData): Section[] {
   const out: Section[] = []
   const push = (std: string, stage: Stage, subjects: Section['subjects'], counts: { boys: number; girls: number }, groupId?: string, groupName?: string) => {
-    const cap = rules.sectionCap[stage]
-    const genderSplit = data.genderSeparate && Number(std) >= 6
-    const parts: { g: Section['gender']; n: number }[] = genderSplit
-      ? [{ g: 'B', n: counts.boys }, { g: 'G', n: counts.girls }]
-      : [{ g: 'C', n: counts.boys + counts.girls }]
-    let letter = 0
-    for (const p of parts) {
-      const k = sectionsFor(p.n, cap)
-      split(p.n, k || 1).forEach((size, i) => {
-        if (k === 0) return
-        const L = LETTERS[letter++] ?? String(letter)
-        const gTxt = p.g === 'B' ? ' (Boys)' : p.g === 'G' ? ' (Girls)' : ''
-        out.push({
-          id: `${std}-${groupId ?? 'X'}-${L}`,
-          standard: std,
-          stage,
-          groupId,
-          gender: p.g,
-          label: `${std}${groupName ? ' ' + groupName : ''} ${L}${gTxt}`,
-          strength: size,
-          subjects: subjects,
-        })
-        void i
+    for (const p of planClass(std, counts, rules.sectionCap[stage], data.genderSeparate, data.sectionPlan?.[planKey(std, groupId)])) {
+      const gTxt = p.gender === 'B' ? ' (Boys)' : p.gender === 'G' ? ' (Girls)' : ''
+      out.push({
+        id: `${std}-${groupId ?? 'X'}-${p.letter}`,
+        standard: std,
+        stage,
+        groupId,
+        gender: p.gender,
+        label: `${std}${groupName ? ' ' + groupName : ''} ${p.letter}${gTxt}`,
+        strength: p.size,
+        subjects: subjects,
       })
     }
   }
@@ -266,9 +254,13 @@ function sectionsFromAllocations(rules: RuleSet, data: SchoolData): Section[] {
       const list = bySec.get(key)!
       const a0 = list[0]
       const sp = splitParallel(list)
-      const gender = g.get(key)!
-      const i = idx[gender]++
-      const strength = gender === 'B' ? bSizes[i] : gender === 'G' ? gSizes[i] : cSizes[i]
+      // sizes set by the section plan (student count) win over the even split worked out here
+      const fixed = a0.size !== undefined
+      const gender: Section['gender'] = fixed ? (a0.gender ?? 'C') : g.get(key)!
+      const i = fixed ? -1 : idx[gender]++
+      const tot = c.boys + c.girls
+      const strength = fixed ? a0.size! : gender === 'B' ? bSizes[i] : gender === 'G' ? gSizes[i] : cSizes[i]
+      const mixB = fixed && gender === 'C' && tot ? Math.round((strength * c.boys) / tot) : undefined
       const gTxt = gender === 'B' ? ' (Boys)' : gender === 'G' ? ' (Girls)' : split6 && Number(std) >= 6 ? ' (Mixed)' : ''
       out.push({
         id: `${std}-${gid || 'X'}-${a0.section}`,
@@ -276,9 +268,9 @@ function sectionsFromAllocations(rules: RuleSet, data: SchoolData): Section[] {
         stage: stageOf(std),
         groupId: gid || undefined,
         gender,
-        ...(inferred && open.includes(key) ? { genderInferred: true } : {}),
-        boys: gender === 'B' ? strength : gender === 'G' ? 0 : cb[i] ?? 0,
-        girls: gender === 'G' ? strength : gender === 'B' ? 0 : cg[i] ?? 0,
+        ...(!fixed && inferred && open.includes(key) ? { genderInferred: true } : {}),
+        boys: gender === 'B' ? strength : gender === 'G' ? 0 : mixB ?? cb[i] ?? 0,
+        girls: gender === 'G' ? strength : gender === 'B' ? 0 : mixB !== undefined ? strength - mixB : cg[i] ?? 0,
         label: `${std}${a0.groupName ? ' ' + a0.groupName : ''} ${a0.section}${gTxt}`,
         strength: strength ?? 0,
         subjects: list.map((a) => ({ subject: a.subject, periods: a.periods, pref: a.pref, ...(a.mode === 'shared' ? { flex: true } : {}) })),

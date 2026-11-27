@@ -1,6 +1,7 @@
 import { Fragment, useMemo, useState } from 'react'
 import { teacherLoads } from '../../engine/allocationChecks'
 import { CATEGORY_LABEL, effectiveLimits } from '../../engine/rules'
+import { teacherLoad } from '../../engine/timetable'
 import type { RuleSet, SchoolData, Section } from '../../engine/types'
 import { isTeachingCategory } from '../../engine/types'
 import { downloadCsv } from '../../lib/csv'
@@ -12,6 +13,8 @@ export default function AllocationTab({ rules, data, sections }: { rules: RuleSe
   const allocs = data.allocations ?? []
   const loads = useMemo(() => teacherLoads(allocs), [allocs])
   const name = useMemo(() => new Map(data.staff.map((s) => [s.id, s.name])), [data.staff])
+  // periods each teacher has in the current timetable, including changes made by hand
+  const inTT = useMemo(() => (data.timetable ? teacherLoad(data.timetable) : null), [data.timetable])
 
   const rows = data.staff
     .filter((s) => isTeachingCategory(s.category))
@@ -20,7 +23,7 @@ export default function AllocationTab({ rules, data, sections }: { rules: RuleSe
       const lim = effectiveLimits(rules, w)
       const p = loads.get(s.id)?.periods ?? 0
       const status = p === 0 ? 'unused' : p > w.max ? 'over' : p > lim.perWeek ? 'tight' : p < w.min && !['PRINCIPAL', 'ACAD_HEAD'].includes(s.category) ? 'under' : 'ok'
-      return { s, p, care: loads.get(s.id)?.care ?? 0, w, status, items: loads.get(s.id)?.items ?? [] }
+      return { s, p, care: loads.get(s.id)?.care ?? 0, w, status, items: loads.get(s.id)?.items ?? [], tt: inTT ? (inTT.get(s.id) ?? 0) : null }
     })
     .sort((a, b) => b.p - a.p)
   const total = allocs.filter((a) => !a.care).reduce((a, x) => a + x.periods, 0)
@@ -47,21 +50,21 @@ export default function AllocationTab({ rules, data, sections }: { rules: RuleSe
             <button key={k} onClick={() => setView(k)} className={cx('rounded-md px-3 py-1', view === k ? 'bg-[#0f2744] text-white' : 'text-slate-600')}>{l}</button>
           ))}
         </div>
-        <Button className="ml-auto" onClick={() => downloadCsv('teacher-allocation.csv', [['Teacher', 'Designation', 'Teaching periods', 'Supervision periods', 'Policy min', 'Policy max', 'Status', 'Allocation'], ...rows.map((r) => [r.s.name, CATEGORY_LABEL[r.s.category], r.p, r.care, r.w.min, r.w.max, STATUS[r.status][0], r.items.join(' | ')])])}>Export CSV</Button>
+        <Button className="ml-auto" onClick={() => downloadCsv('teacher-allocation.csv', [['Teacher', 'Designation', 'Teaching periods', 'Supervision periods', 'In timetable', 'Policy min', 'Policy max', 'Status', 'Allocation'], ...rows.map((r) => [r.s.name, r.s.designation ?? CATEGORY_LABEL[r.s.category], r.p, r.care, r.tt ?? '', r.w.min, r.w.max, STATUS[r.status][0], r.items.join(' | ')])])}>Export CSV</Button>
       </div>
 
       {view === 'teachers' ? (
         <Card pad={false} title="Teacher workload" subtitle={`From the Subject Periods sheet · policy ranges from the TMHNU workload policy · schedulable = what ${rules.daysPerWeek} days × ${rules.periodsPerDay} periods allow under the continuous-period rule`}>
           <table className="w-full text-sm">
             <thead className="border-b border-slate-100 bg-slate-50/60 text-left text-xs uppercase tracking-wide text-slate-500">
-              <tr><th className="px-4 py-3">Teacher</th><th className="px-4 py-3">Designation</th><th className="px-4 py-3">Load</th><th className="px-4 py-3 text-right">Periods</th><th className="px-4 py-3 text-right">Policy</th><th className="px-4 py-3">Status</th></tr>
+              <tr><th className="px-4 py-3">Teacher</th><th className="px-4 py-3">Designation</th><th className="px-4 py-3">Load</th><th className="px-4 py-3 text-right">Periods</th>{inTT && <th className="px-4 py-3 text-right" title="Periods in the current timetable, including changes made by hand">In timetable</th>}<th className="px-4 py-3 text-right">Policy</th><th className="px-4 py-3">Status</th></tr>
             </thead>
             <tbody>
               {rows.map((r) => (
                 <Fragment key={r.s.id}>
                   <tr className="cursor-pointer border-t border-slate-100 hover:bg-slate-50/60" onClick={() => setOpen(open === r.s.id ? null : r.s.id)}>
                     <td className="px-4 py-2.5 font-medium text-slate-900">{open === r.s.id ? '▾' : '▸'} {r.s.name}</td>
-                    <td className="px-4 py-2.5 text-slate-600">{CATEGORY_LABEL[r.s.category]}</td>
+                    <td className="px-4 py-2.5 text-slate-600">{r.s.designation ?? CATEGORY_LABEL[r.s.category]}</td>
                     <td className="w-48 px-4 py-2.5">
                       <div className="relative h-2 rounded-full bg-slate-100">
                         <div className="absolute h-2 rounded-full bg-emerald-100" style={{ left: `${(r.w.min / 48) * 100}%`, width: `${((r.w.max - r.w.min) / 48) * 100}%` }} />
@@ -69,6 +72,7 @@ export default function AllocationTab({ rules, data, sections }: { rules: RuleSe
                       </div>
                     </td>
                     <td className="px-4 py-2.5 text-right font-semibold tabular-nums">{r.p}{r.care ? <span className="ml-1 text-xs font-normal text-slate-400">+{r.care} sup.</span> : null}</td>
+                    {inTT && <td className={cx('px-4 py-2.5 text-right tabular-nums', r.tt !== r.p + r.care && 'font-semibold text-amber-700')} title={r.tt !== r.p + r.care ? 'Differs from the planned allocation' : undefined}>{r.tt}</td>}
                     <td className="px-4 py-2.5 text-right tabular-nums text-slate-500">{r.w.min}–{r.w.max}</td>
                     <td className="px-4 py-2.5"><Badge tone={STATUS[r.status][1]}>{STATUS[r.status][0]}</Badge></td>
                   </tr>
@@ -86,7 +90,7 @@ export default function AllocationTab({ rules, data, sections }: { rules: RuleSe
             const sum = sec.weekPeriods ?? sec.allocs!.reduce((a, x) => a + x.periods, 0)
             const slots = rules.daysPerWeek * rules.periodsPerDay
             return (
-              <Card key={sec.id} title={`Class ${sec.label}`} subtitle={`${sec.strength} students${sec.allocs?.some((x) => x.autoSplit) ? ' · new Girls section created by the app (same subjects and teachers as the Boys section)' : ''}`} actions={<Badge tone={sum > slots ? 'critical' : sum < slots ? 'medium' : 'pass'}>{sum}/{slots} periods</Badge>} pad={false}>
+              <Card key={sec.id} title={`Class ${sec.label}`} subtitle={`${sec.strength} students${sec.allocs?.[0]?.copiedFrom ? ` · section added for the student count — subjects and teachers copied from section ${sec.allocs[0].copiedFrom}` : ''}`} actions={<Badge tone={sum > slots ? 'critical' : sum < slots ? 'medium' : 'pass'}>{sum}/{slots} periods</Badge>} pad={false}>
                 <table className="w-full text-sm">
                   <tbody>
                     {sec.allocs!.map((a, i) => (

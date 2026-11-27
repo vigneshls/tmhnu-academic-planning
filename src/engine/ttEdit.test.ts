@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { busyAt, clearCell, lessonsFor, placeLesson, setTeacher, swapCells, swapClashes } from './ttEdit'
+import { busyAt, clearCell, lessonsFor, placeLesson, setTeacher, swapCells, swapClashes, typeCell } from './ttEdit'
 import type { Cell, TimetableResult } from './types'
 
 const cell = (lessonId: string, subject: string, teacherId: string): Cell => ({ lessonId, subject, teacherId })
@@ -44,5 +44,19 @@ describe('timetable editing', () => {
     expect(todo.map((x) => [x.lesson.id, x.missing])).toEqual([['L1', 1], ['L2', 1]])
     t = placeLesson(t, 'S1', 0, 2, todo.find((x) => x.lesson.id === 'L2')!.lesson)
     expect(t.unplaced).toEqual([{ lessonId: 'L1', remaining: 1 }])
+  })
+
+  it('types a subject and teacher into a period', () => {
+    // an existing subject joins its lesson: Tamil in the empty P3 fills the missing Tamil period
+    let t = typeCell(tt(), 'S1', 0, 2, ' tamil ', 'T2')
+    expect(t.grid.S1[0][2]).toMatchObject({ lessonId: 'L2', subject: 'Tamil', teacherId: 'T2', edited: true })
+    expect(t.unplaced).toEqual([])
+    // a new subject becomes a typed lesson counted by what is placed
+    t = typeCell(t, 'S1', 0, 0, 'Library', 'T1')
+    expect(t.grid.S1[0][0]).toMatchObject({ subject: 'Library', teacherId: 'T1' })
+    expect(t.lessons.find((l) => l.custom)).toMatchObject({ subject: 'Library', count: 1 })
+    expect(t.unplaced).toEqual([{ lessonId: 'L1', remaining: 1 }]) // Maths was overwritten
+    t = clearCell(t, 'S1', 0, 0)
+    expect(t.lessons.some((l) => l.custom)).toBe(false)
   })
 })
